@@ -1,0 +1,4 @@
+const file=document.querySelector('#file'),url=document.querySelector('#url'),extract=document.querySelector('#extract'),status=document.querySelector('#status'),statusText=document.querySelector('#statusText');
+function showMessage(text){status.classList.remove('hidden');statusText.textContent=text;setTimeout(()=>status.classList.add('hidden'),4500)}
+file.addEventListener('change',()=>{if(!file.files[0])return;showMessage('Audio selected. The separation engine is the next piece we are connecting.');});
+extract.addEventListener('click',()=>{if(!url.value.trim()){url.focus();return}showMessage('Link received. The separation engine is the next piece we are connecting.');});
