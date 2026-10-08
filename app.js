@@ -55,22 +55,6 @@ async function lyricsBlob(){
 function save(blob,name){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 function note(s){$('downloadStatus').textContent=s}
 $('downloadLyrics').addEventListener('click',async()=>{try{note('Creating Word document…');save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready.')}catch(e){note(e.message)}});
-$('downloadAll').addEventListener('click',async()=>{
- try{
-  if(!currentFile||!stemUrls)throw Error('Upload and separate an audio file before downloading all tracks.');
-  if(!window.JSZip)throw Error('ZIP library could not load.');
-  note('Preparing ZIP. Downloading separated audio may take a moment…');
-  const zip=new JSZip();
-  zip.file(filename('Full Track',extFrom(currentFile.name)),currentFile);
-  for(const [kind,link] of [['Vocals',stemUrls.vocals],['Instrumental',stemUrls.instrumental]]){
-   const response=await fetch(link);if(!response.ok)throw Error('Could not download '+kind+' from the separator');
-   zip.file(filename(kind,'mp3'),await response.blob());
-  }
-  zip.file(filename('Lyrics','docx'),await lyricsBlob());
-  save(await zip.generateAsync({type:'blob'}),base()+' (All Files).zip');note('ZIP ready.');
- }catch(e){console.error(e);note(e.message+' You can also download each file individually.')}
-});
-
 /* Waveform and synchronised playback */
 const ids=['original','vocals','instrumental'],waves={};let mixInterval=null;
 const formatTime=t=>{t=Number.isFinite(t)?t:0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
