@@ -118,19 +118,19 @@ function note(s){$('downloadStatus').textContent=s}
 $('downloadLyrics').addEventListener('click',async()=>{try{note('Creating Word document…');save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready.')}catch(e){note(e.message)}});
 /* Lyrics file import and transcript cleanup. No external upload. */
 function cleanTranscript(raw){
- return raw.replace(/^\\uFEFF/,'').replace(/\\r\\n?/g,'\\n').split('\\n').map(line=>{
+ return raw.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').split('\n').map(line=>{
   let s=line.trim();
-  if(/^WEBVTT(?:\\s|$)/i.test(s)||/^\\d+$/.test(s)||/^NOTE(?:\\s|$)/i.test(s))return '';
-  if(/^(?:\\d{2}:)?\\d{2}:\\d{2}[.,]\\d{3}\\s*-->/.test(s))return '';
-  s=s.replace(/^(?:\\[)?(?:\\d{2}:)?\\d{2}:\\d{2}(?:[.,]\\d{1,3})?\\]?\\s*/,'');
+  if(/^WEBVTT(?:\s|$)/i.test(s)||/^\d+$/.test(s)||/^NOTE(?:\s|$)/i.test(s))return '';
+  if(/^(?:\d{2}:)?\d{2}:\d{2}[.,]\d{3}\s*-->/.test(s))return '';
+  s=s.replace(/^(?:\[)?(?:\d{2}:)?\d{2}:\d{2}(?:[.,]\d{1,3})?\]?\s*/,'');
   s=s.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
   return s;
- }).join('\\n').replace(/\\n{3,}/g,'\\n\\n').trim();
+ }).join('\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 $('lyricsImport').addEventListener('change',async e=>{
  const selected=e.target.files?.[0];if(!selected)return;
  if(selected.size>2*1024*1024){$('lyricsToolStatus').textContent='Lyrics file must be under 2 MB.';return}
- if(!/\\.(txt|srt|vtt|lrc)$/i.test(selected.name)){$('lyricsToolStatus').textContent='Choose a TXT, SRT, VTT or LRC file.';return}
+ if(!/\.(txt|srt|vtt|lrc)$/i.test(selected.name)){$('lyricsToolStatus').textContent='Choose a TXT, SRT, VTT or LRC file.';return}
  try{
   const imported=cleanTranscript(await selected.text());
   if(!imported)throw Error('No lyrics or transcript text was found.');
