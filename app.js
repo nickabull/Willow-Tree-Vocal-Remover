@@ -88,8 +88,8 @@ extract.addEventListener('click',async()=>{
  let target;try{target=new URL(raw)}catch(e){fail(new Error('Please enter a valid HTTPS audio-file link.'));return}
  if(target.protocol!=='https:'){fail(new Error('Please use a secure HTTPS audio-file link.'));return}
  if(/(^|\\.)(youtube\\.com|youtu\\.be|youtube-nocookie\\.com|music\\.youtube\\.com)$/i.test(target.hostname)){fail(new Error('YouTube video links cannot be imported directly. Please use an authorised audio file instead.'));return}
- const path=decodeURIComponent(target.pathname).split('/').pop()||'audio.mp3';
- if(!/\\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(path)){fail(new Error('The link must point directly to an MP3, WAV, M4A, AAC, FLAC or OGG file.'));return}
+ const path=decodeURIComponent(target.pathname).split('/').pop()||'';
+ const namedAudio=/\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(path);
  extract.disabled=true;busy('Downloading authorised audio from the link…');
  try{
   const response=await fetch(target.href,{mode:'cors',credentials:'omit',redirect:'follow'});
@@ -99,7 +99,13 @@ extract.addEventListener('click',async()=>{
   const blob=await response.blob();
   if(blob.size>40*1024*1024)throw Error('The audio file exceeds the 40 MB limit.');
   if(!blob.size)throw Error('The audio file is empty.');
-  const imported=new File([blob],path,{type:blob.type||'audio/mpeg'});
+  const type=(response.headers.get('content-type')||blob.type||'').split(';')[0].trim().toLowerCase();
+  const allowedType=/^audio\/(mpeg|mp3|mp4|x-m4a|wav|x-wav|aac|flac|x-flac|ogg|opus)$/i.test(type)||type==='application/ogg';
+  if(!allowedType&&!namedAudio)throw Error('The download did not identify itself as a supported audio file (Content-Type: '+(type||'missing')+').');
+  if(/text\/html|application\/json/i.test(type))throw Error('The link returned a web page or API response, not audio.');
+  const ext=type.includes('wav')?'wav':type.includes('ogg')?'ogg':type.includes('flac')?'flac':type.includes('aac')?'aac':type.includes('mp4')||type.includes('m4a')?'m4a':'mp3';
+  const name=namedAudio?path:'Imported Audio.'+ext;
+  const imported=new File([blob],name,{type:allowedType?type:'audio/mpeg'});
   const transfer=new DataTransfer();transfer.items.add(imported);file.files=transfer.files;
   file.dispatchEvent(new Event('change',{bubbles:true}));
  }catch(e){fail(new Error('Could not import this audio link. The source may block browser downloads (CORS), or the file may be unavailable. '+(e?.message||'')))}
