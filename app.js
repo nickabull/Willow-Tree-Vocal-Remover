@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const file=$('file'),url=$('url'),extract=$('extract'),status=$('status'),statusText=$('statusText'),results=$('results');
 const SPACE_ID='abidlabs/music-separation';
-let currentFile=null, stemUrls=null;
+let currentFile=null, stemUrls=null,activeRequest=0,originalObjectUrl=null;
 function busy(text){$('retrySeparation').classList.add('hidden');status.classList.add('is-processing');status.classList.remove('hidden');results.classList.add('hidden');$('localFallback').classList.add('hidden');statusText.textContent=text}
 function done(){$('retrySeparation').classList.add('hidden');status.classList.remove('is-processing');status.classList.add('hidden');results.classList.remove('hidden')}
 function fail(e){$('retrySeparation').classList.toggle('hidden',!currentFile);status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. You can try the alternative service below, or try again later.':'Separation failed: '+message}
@@ -13,11 +13,13 @@ function updateNames(){if(!currentFile)return;$('downloadOriginal').download=fil
 ['trackTitle','artist','production'].forEach(id=>$(id).addEventListener('input',updateNames));
 function fileUrl(x){return typeof x==='string'?x:x?.url||x?.path||''}
 async function separate(upload){
+  const requestId=++activeRequest;
   busy('Connecting to the vocal separator…');
   const {Client,handle_file}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
   const app=await Client.connect(SPACE_ID);
   busy('Uploading and separating your track. The free service may take several minutes…');
   const response=await app.predict('/inference',[handle_file(upload)]);
+  if(requestId!==activeRequest)return;
   const stems=response?.data;
   if(!Array.isArray(stems)||stems.length<2)throw Error('The separator did not return vocals and instrumental');
   const a=fileUrl(stems[0]),b=fileUrl(stems[1]);if(!a||!b)throw Error('Missing audio download links');
@@ -25,7 +27,8 @@ async function separate(upload){
   const nameA=JSON.stringify(stems[0]).toLowerCase(),nameB=JSON.stringify(stems[1]).toLowerCase();
   if(nameA.includes('instrument')||nameA.includes('other')||nameB.includes('vocal')){vocalUrl=b;instUrl=a}
   stemUrls={vocals:vocalUrl,instrumental:instUrl};
-  const originalUrl=URL.createObjectURL(upload);
+  if(originalObjectUrl)URL.revokeObjectURL(originalObjectUrl);
+  const originalUrl=URL.createObjectURL(upload);originalObjectUrl=originalUrl;
   for(const [id,link] of [['original',originalUrl],['vocals',vocalUrl],['instrumental',instUrl]]){$(id).src=link;$('download'+id[0].toUpperCase()+id.slice(1)).href=link}
   updateNames();done();
 }
@@ -35,6 +38,9 @@ file.addEventListener('change',async()=>{
  const chosen=file.files?.[0];if(!chosen)return;
  if(chosen.size>40*1024*1024){fail(new Error('Please choose an audio file smaller than 40 MB.'));file.value='';return}
  if(!chosen.type.startsWith('audio/')&&!/\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(chosen.name)){fail(new Error('Please choose an MP3, WAV, M4A, AAC, FLAC or OGG audio file.'));file.value='';return}
+ ++activeRequest;
+ if(typeof stopMix==='function')stopMix(true);
+ results.classList.add('hidden');status.classList.add('hidden');
  currentFile=chosen;stemUrls=null;
  const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
