@@ -17,7 +17,7 @@ async function separate(upload){
   const {Client,handle_file}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
   const app=await Client.connect(SPACE_ID);
   busy('Uploading and separating your track. The free service may take several minutes…');
-  const response=await app.predict('/predict',[handle_file(upload)]);
+  const response=await app.predict('/inference',[handle_file(upload)]);
   const stems=response?.data;
   if(!Array.isArray(stems)||stems.length<2)throw Error('The separator did not return vocals and instrumental');
   const a=fileUrl(stems[0]),b=fileUrl(stems[1]);if(!a||!b)throw Error('Missing audio download links');
