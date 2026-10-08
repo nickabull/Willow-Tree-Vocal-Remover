@@ -106,7 +106,7 @@ extract.addEventListener('click',async()=>{
  finally{extract.disabled=false}
 });
 async function lyricsBlob(){
- if(!window.docx)throw Error('Word document library could not load; check your connection.');
+ if(!window.docx)throw Error('DOCX library unavailable.');
  const {Document,Paragraph,TextRun,Packer}=window.docx;
  const title=[$('trackTitle').value,$('artist').value,$('production').value].map(s=>s.trim());
  const lines=$('lyricsText').value.split(/\r?\n/);
@@ -115,7 +115,24 @@ async function lyricsBlob(){
 }
 function save(blob,name){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 function note(s){$('downloadStatus').textContent=s}
-$('downloadLyrics').addEventListener('click',async()=>{try{note('Creating Word document…');save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready.')}catch(e){note(e.message)}});
+function wordCompatibleDoc(){
+ const escape=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+ const headings=[$('trackTitle').value,$('artist').value,$('production').value].map((s,i)=>'<p style="font-size:'+(i===0?'20':'13')+'pt;font-weight:'+(i===0?'bold':'normal')+'">'+escape(s.trim()||'')+'</p>').join('');
+ const lyrics=$('lyricsText').value.split(/\\r?\\n/).map(line=>'<p style="margin:0 0 4pt">'+(escape(line)||'&nbsp;')+'</p>').join('');
+ const doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Willow Tree Lyrics</title></head><body style="font-family:Arial,sans-serif">'+headings+'<hr>'+lyrics+'</body></html>';
+ return new Blob(['\\ufeff',doc],{type:'application/msword'});
+}
+$('downloadLyrics').addEventListener('click',async()=>{
+ try{
+  note('Creating Word document…');
+  if(window.docx){save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready (.docx).')}
+  else{save(wordCompatibleDoc(),filename('Lyrics','doc'));note('Word-compatible document ready (.doc). It opens in Microsoft Word; use Save As to convert to .docx if needed.')}
+ }catch(e){
+  console.warn('DOCX generation failed, using Word-compatible fallback',e);
+  try{save(wordCompatibleDoc(),filename('Lyrics','doc'));note('Word-compatible document ready (.doc). Use Save As in Word for .docx.')}
+  catch(fallbackError){note('Word download failed: '+fallbackError.message)}
+ }
+});
 /* Lyrics file import and transcript cleanup. No external upload. */
 function cleanTranscript(raw){
  return raw.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').split('\n').map(line=>{
