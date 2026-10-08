@@ -116,6 +116,42 @@ async function lyricsBlob(){
 function save(blob,name){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 function note(s){$('downloadStatus').textContent=s}
 $('downloadLyrics').addEventListener('click',async()=>{try{note('Creating Word document…');save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready.')}catch(e){note(e.message)}});
+/* Lyrics file import and transcript cleanup. No external upload. */
+function cleanTranscript(raw){
+ return raw.replace(/^\\uFEFF/,'').replace(/\\r\\n?/g,'\\n').split('\\n').map(line=>{
+  let s=line.trim();
+  if(/^WEBVTT(?:\\s|$)/i.test(s)||/^\\d+$/.test(s)||/^NOTE(?:\\s|$)/i.test(s))return '';
+  if(/^(?:\\d{2}:)?\\d{2}:\\d{2}[.,]\\d{3}\\s*-->/.test(s))return '';
+  s=s.replace(/^(?:\\[)?(?:\\d{2}:)?\\d{2}:\\d{2}(?:[.,]\\d{1,3})?\\]?\\s*/,'');
+  s=s.replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  return s;
+ }).join('\\n').replace(/\\n{3,}/g,'\\n\\n').trim();
+}
+$('lyricsImport').addEventListener('change',async e=>{
+ const selected=e.target.files?.[0];if(!selected)return;
+ if(selected.size>2*1024*1024){$('lyricsToolStatus').textContent='Lyrics file must be under 2 MB.';return}
+ if(!/\\.(txt|srt|vtt|lrc)$/i.test(selected.name)){$('lyricsToolStatus').textContent='Choose a TXT, SRT, VTT or LRC file.';return}
+ try{
+  const imported=cleanTranscript(await selected.text());
+  if(!imported)throw Error('No lyrics or transcript text was found.');
+  if($('lyricsText').value.trim()&&!confirm('Replace the current lyrics with the imported text?'))return;
+  $('lyricsText').value=imported;
+  $('lyricsToolStatus').textContent='Imported '+selected.name+' and removed transcript timestamps. Review the text before downloading.';
+ }catch(err){$('lyricsToolStatus').textContent='Could not import lyrics: '+err.message}
+ finally{e.target.value=''}
+});
+$('cleanLyrics').addEventListener('click',()=>{
+ const old=$('lyricsText').value;if(!old.trim()){$('lyricsToolStatus').textContent='Paste or import a transcript first.';return}
+ $('lyricsText').value=cleanTranscript(old);$('lyricsToolStatus').textContent='Timestamps removed. Please review the lyrics.';
+});
+$('downloadLyricsTxt').addEventListener('click',()=>{
+ const value=$('lyricsText').value;if(!value.trim()){note('Add some lyrics first.');return}
+ save(new Blob([value],{type:'text/plain;charset=utf-8'}),filename('Lyrics','txt'));note('Text lyrics downloaded.');
+});
+$('copyLyrics').addEventListener('click',async()=>{
+ const value=$('lyricsText').value;if(!value.trim()){note('Add some lyrics first.');return}
+ try{await navigator.clipboard.writeText(value);note('Lyrics copied to clipboard.')}catch(e){note('Clipboard unavailable. Select the lyrics and copy them manually.')}
+});
 /* Waveform and synchronised playback */
 const ids=['original','vocals','instrumental'],waves={},waveStates={};let mixInterval=null;
 const formatTime=t=>{t=Number.isFinite(t)?t:0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
@@ -200,7 +236,7 @@ done=function(){ids.forEach(id=>{waveStates[id]='loading';delete waves[id]});old
 
 /* Lyrics discovery options: avoid claiming unsupported automated transcription. */
 $('findPublishedLyrics').addEventListener('click',()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim();if(!title){$('lyricsToolStatus').textContent='Enter the song title first (and artist if known).';$('trackTitle').focus();return}const query=[title,artist,'lyrics'].filter(Boolean).join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer');$('lyricsToolStatus').textContent='Lyrics search opened in a new tab. Copy any lyrics you are permitted to use into the box below.'});
-$('transcribeLyrics').addEventListener('click',()=>{$('lyricsToolStatus').textContent=currentFile?'Automatic singing transcription needs a speech-recognition service and is not connected yet. You can paste or edit lyrics below.':'Upload an audio file first. Automatic transcription will need a speech-recognition service, which is not connected yet.'});
+$('transcribeLyrics').addEventListener('click',()=>{$('lyricsToolStatus').textContent=currentFile?'Automatic singing transcription is not yet connected. You can import a TXT, SRT, VTT or LRC transcript, edit it, and export Word or text.':'Automatic singing transcription needs a suitable recognition model and is not connected yet. Import or paste lyrics in the meantime.'});
 
 /* Free MusicBrainz metadata search (not audio fingerprint recognition). */
 $('lookupTrack').addEventListener('click',async()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim(),output=$('lookupStatus');if(!title){output.textContent='Enter a song title, or upload a file with the title in its filename.';return}output.textContent='Searching MusicBrainz catalogue…';try{const q='recording:'+JSON.stringify(title)+(artist?' AND artist:'+JSON.stringify(artist):'');const endpoint='https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=5';const response=await fetch(endpoint,{headers:{Accept:'application/json'}});if(!response.ok)throw Error('Catalogue lookup temporarily unavailable');const data=await response.json();const recording=(data.recordings||[]).find(x=>x.title&&x['artist-credit']?.length);if(!recording){output.textContent='No matching song found. You can still enter the details manually.';return}const performer=recording['artist-credit'].map(x=>typeof x==='string'?x:x.name||x.artist?.name||'').join('').trim();$('trackTitle').value=recording.title;if(performer)$('artist').value=performer;const release=recording.releases?.[0]?.title;if(release&&!$('production').value.trim())$('production').value=release;updateNames();output.textContent='Found a possible match in MusicBrainz. Please check the details; this is a title search, not Shazam-style audio recognition.'}catch(e){output.textContent='Song lookup unavailable right now. Please enter the details manually.'}});
