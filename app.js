@@ -97,3 +97,7 @@ function estimateKey(buffer){
 }
 const oldDone=done;
 done=function(){oldDone();stopMix(true);$('stem-original').checked=false;$('stem-vocals').checked=true;$('stem-instrumental').checked=true;ids.forEach(id=>{$(id).muted=!$('stem-'+id).checked;analyseWave(id)});updateMix()};
+
+/* Lyrics discovery options: avoid claiming unsupported automated transcription. */
+$('findPublishedLyrics').addEventListener('click',()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim();if(!title){$('lyricsToolStatus').textContent='Enter the song title first (and artist if known).';$('trackTitle').focus();return}const query=[title,artist,'lyrics'].filter(Boolean).join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer');$('lyricsToolStatus').textContent='Lyrics search opened in a new tab. Copy any lyrics you are permitted to use into the box below.'});
+$('transcribeLyrics').addEventListener('click',()=>{$('lyricsToolStatus').textContent=currentFile?'Automatic singing transcription needs a speech-recognition service and is not connected yet. You can paste or edit lyrics below.':'Upload an audio file first. Automatic transcription will need a speech-recognition service, which is not connected yet.'});
