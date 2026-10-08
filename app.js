@@ -4,7 +4,7 @@ const SPACE_ID='abidlabs/music-separation';
 let currentFile=null, stemUrls=null;
 function busy(text){status.classList.remove('hidden');results.classList.add('hidden');statusText.textContent=text}
 function done(){status.classList.add('hidden');results.classList.remove('hidden')}
-function fail(e){status.classList.remove('hidden');results.classList.add('hidden');statusText.textContent='Separation failed: '+(e?.message||'Please try again.')}
+function fail(e){status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';statusText.textContent=/ZeroGPU quota|quota.*exceed|0s left/i.test(message)?'The free audio-processing service has reached its GPU allowance. Your file is fine. Please try again later; repeated immediate retries will not help.':'Separation failed: '+message}
 function safe(s){return (s||'Unknown').replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim().replace(/\s+/g,' ').slice(0,100)||'Unknown'}
 function base(){return [safe($('trackTitle').value),safe($('artist').value),safe($('production').value)].join(' - ')}
 function filename(kind,ext){return base()+' ('+kind+').'+ext}
