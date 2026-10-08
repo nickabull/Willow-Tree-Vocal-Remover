@@ -4,12 +4,12 @@ const SPACE_ID='abidlabs/music-separation';
 let currentFile=null, stemUrls=null;
 function busy(text){status.classList.add('is-processing');status.classList.remove('hidden');results.classList.add('hidden');$('localFallback').classList.add('hidden');statusText.textContent=text}
 function done(){status.classList.remove('is-processing');status.classList.add('hidden');results.classList.remove('hidden')}
-function fail(e){status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. Use the local-processing option below, or try again later.':'Separation failed: '+message}
+function fail(e){status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. You can try the alternative service below, or try again later.':'Separation failed: '+message}
 function safe(s){return (s||'Unknown').replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim().replace(/\s+/g,' ').slice(0,100)||'Unknown'}
 function base(){return [safe($('trackTitle').value),safe($('artist').value),safe($('production').value)].join(' - ')}
 function filename(kind,ext){return base()+' ('+kind+').'+ext}
 function extFrom(name){return (name?.split('.').pop()||'mp3').toLowerCase().replace(/[^a-z0-9]/g,'')||'mp3'}
-function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals','mp3');$('downloadInstrumental').download=filename('Instrumental',localStems?'wav':'mp3')}
+function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals','mp3');$('downloadInstrumental').download=filename('Instrumental','mp3')}
 ['trackTitle','artist','production'].forEach(id=>$(id).addEventListener('input',updateNames));
 function fileUrl(x){return typeof x==='string'?x:x?.url||x?.path||''}
 async function separate(upload){
