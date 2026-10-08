@@ -82,7 +82,29 @@ file.addEventListener('change',async()=>{
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
  updateNames();if($('processingMode').value==='browser'){const requestId=++activeRequest;try{await browserSeparate(chosen,requestId)}catch(e){if(requestId===activeRequest){console.error('Browser separation failed',e);fail(new Error('Browser separation failed: '+(e?.message||'Unknown error')));$('localFallback').classList.remove('hidden')}}}else{try{await separate(chosen)}catch(e){await handleSeparationError(e,chosen)}}
 });
-extract.addEventListener('click',()=>{if(!url.value.trim()){url.focus();return}status.classList.remove('hidden');statusText.textContent='YouTube-link processing is not yet available. Please upload an audio file.'});
+/* Import a permitted direct audio file; do not scrape video sites or proxy arbitrary URLs. */
+extract.addEventListener('click',async()=>{
+ const raw=url.value.trim();if(!raw){url.focus();return}
+ let target;try{target=new URL(raw)}catch(e){fail(new Error('Please enter a valid HTTPS audio-file link.'));return}
+ if(target.protocol!=='https:'){fail(new Error('Please use a secure HTTPS audio-file link.'));return}
+ if(/(^|\\.)(youtube\\.com|youtu\\.be|youtube-nocookie\\.com|music\\.youtube\\.com)$/i.test(target.hostname)){fail(new Error('YouTube video links cannot be imported directly. Please use an authorised audio file instead.'));return}
+ const path=decodeURIComponent(target.pathname).split('/').pop()||'audio.mp3';
+ if(!/\\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(path)){fail(new Error('The link must point directly to an MP3, WAV, M4A, AAC, FLAC or OGG file.'));return}
+ extract.disabled=true;busy('Downloading authorised audio from the link…');
+ try{
+  const response=await fetch(target.href,{mode:'cors',credentials:'omit',redirect:'follow'});
+  if(!response.ok)throw Error('The audio server returned HTTP '+response.status);
+  const size=Number(response.headers.get('content-length')||0);
+  if(size>40*1024*1024)throw Error('The audio file exceeds the 40 MB limit.');
+  const blob=await response.blob();
+  if(blob.size>40*1024*1024)throw Error('The audio file exceeds the 40 MB limit.');
+  if(!blob.size)throw Error('The audio file is empty.');
+  const imported=new File([blob],path,{type:blob.type||'audio/mpeg'});
+  const transfer=new DataTransfer();transfer.items.add(imported);file.files=transfer.files;
+  file.dispatchEvent(new Event('change',{bubbles:true}));
+ }catch(e){fail(new Error('Could not import this audio link. The source may block browser downloads (CORS), or the file may be unavailable. '+(e?.message||'')))}
+ finally{extract.disabled=false}
+});
 async function lyricsBlob(){
  if(!window.docx)throw Error('Word document library could not load; check your connection.');
  const {Document,Paragraph,TextRun,Packer}=window.docx;
