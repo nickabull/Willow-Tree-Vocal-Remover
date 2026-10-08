@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const file=$('file'),url=$('url'),extract=$('extract'),status=$('status'),statusText=$('statusText'),results=$('results');
 const SPACE_ID='abidlabs/music-separation';
-let currentFile=null, stemUrls=null,localStems=false;
+let currentFile=null, stemUrls=null;
 function busy(text){status.classList.add('is-processing');status.classList.remove('hidden');results.classList.add('hidden');$('localFallback').classList.add('hidden');statusText.textContent=text}
 function done(){status.classList.remove('is-processing');status.classList.add('hidden');results.classList.remove('hidden')}
 function fail(e){status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. Use the local-processing option below, or try again later.':'Separation failed: '+message}
@@ -9,12 +9,10 @@ function safe(s){return (s||'Unknown').replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim
 function base(){return [safe($('trackTitle').value),safe($('artist').value),safe($('production').value)].join(' - ')}
 function filename(kind,ext){return base()+' ('+kind+').'+ext}
 function extFrom(name){return (name?.split('.').pop()||'mp3').toLowerCase().replace(/[^a-z0-9]/g,'')||'mp3'}
-function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals',localStems?'wav':'mp3');$('downloadInstrumental').download=filename('Instrumental',localStems?'wav':'mp3')}
+function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals','mp3');$('downloadInstrumental').download=filename('Instrumental',localStems?'wav':'mp3')}
 ['trackTitle','artist','production'].forEach(id=>$(id).addEventListener('input',updateNames));
 function fileUrl(x){return typeof x==='string'?x:x?.url||x?.path||''}
 async function separate(upload){
-  if($('preferLocal').checked)return separateLocally(upload);
-  localStems=false;
   busy('Connecting to the vocal separator…');
   const {Client,handle_file}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
   const app=await Client.connect(SPACE_ID);
@@ -32,24 +30,6 @@ async function separate(upload){
   updateNames();done();
 }
 
-/* Experimental client-side model: no GPU quota, but browser/device compatibility varies. */
-async function separateLocally(upload){
- busy('Loading the local AI separator. The first run downloads about 67 MB; please keep this tab open…');
- const {createSeparator}=await import('https://esm.sh/web-audio-separation?bundle');
- const separator=createSeparator('UVR-MDX-NET-Voc_FT',{mdx:{executionProviders:['webgpu','wasm']}});
- await separator.loadModel();
- busy('Separating vocals and instrumental on your device. This may take several minutes…');
- const inputUrl=URL.createObjectURL(upload);
- let stems;
- try{stems=await separator.separate(inputUrl)}finally{URL.revokeObjectURL(inputUrl)}
- if(!Array.isArray(stems)||stems.length<2)throw Error('Local separator did not return two audio tracks');
- // Voc_FT primary stem is vocals; library returns primary then secondary.
- const [vocalUrl,instUrl]=stems;
- localStems=true;stemUrls={vocals:vocalUrl,instrumental:instUrl};
- const originalUrl=URL.createObjectURL(upload);
- for(const [id,link] of [['original',originalUrl],['vocals',vocalUrl],['instrumental',instUrl]]){$(id).src=link;$('download'+id[0].toUpperCase()+id.slice(1)).href=link}
- updateNames();done();
-}
 file.addEventListener('change',async()=>{
  const chosen=file.files?.[0];if(!chosen)return;
  currentFile=chosen;stemUrls=null;
