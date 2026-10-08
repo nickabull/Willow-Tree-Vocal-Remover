@@ -12,3 +12,5 @@ body{background:linear-gradient(90deg,rgba(0,0,0,.9),rgba(20,6,20,.82),rgba(0,0,
 
 /* Consistent type throughout the app */
 body,button,input,textarea,label,p,.hint,.tag,.download,.upload,.stem-option,.mix-buttons span{font-family:'League Gothic',Impact,'Arial Narrow',sans-serif;letter-spacing:.045em}body{font-size:19px}.hint{font-size:16px}.metadata label,.stem-option{font-size:18px}.refresh-button{font-size:18px}input,textarea{font-size:19px!important}.brand span{font-family:'League Gothic',Impact,'Arial Narrow',sans-serif;font-size:.4em}.lyrics-tools button{font-family:'League Gothic',Impact,'Arial Narrow',sans-serif}
+
+#lookupTrack{display:block;margin:10px auto 6px;background:#ec4384;color:#fff;border-radius:8px}#lookupStatus{min-height:18px}
