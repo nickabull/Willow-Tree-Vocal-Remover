@@ -132,11 +132,25 @@ $('lyricsImport').addEventListener('change',async e=>{
  if(selected.size>2*1024*1024){$('lyricsToolStatus').textContent='Lyrics file must be under 2 MB.';return}
  if(!/\.(txt|srt|vtt|lrc)$/i.test(selected.name)){$('lyricsToolStatus').textContent='Choose a TXT, SRT, VTT or LRC file.';return}
  try{
-  const imported=cleanTranscript(await selected.text());
-  if(!imported)throw Error('No lyrics or transcript text was found.');
+  const bytes=await selected.arrayBuffer();
+  let raw=new TextDecoder('utf-8').decode(bytes);
+  if(bytes.byteLength>=2){
+   const view=new Uint8Array(bytes);
+   if(view[0]===0xff&&view[1]===0xfe)raw=new TextDecoder('utf-16le').decode(bytes);
+   else if(view[0]===0xfe&&view[1]===0xff){
+    const swapped=view.slice(2);for(let i=0;i+1<swapped.length;i+=2){const t=swapped[i];swapped[i]=swapped[i+1];swapped[i+1]=t}
+    raw=new TextDecoder('utf-16le').decode(swapped);
+   }
+  }
+  raw=raw.replace(/\\u0000/g,'');
+  if(!raw.trim())throw Error('The selected file ('+selected.name+', '+selected.size+' bytes) contains no readable text. Please open it in a text editor to check its contents.');
+  const cleaned=cleanTranscript(raw);
+  const imported=cleaned.trim()?cleaned:raw.trim();
+  if(!cleaned.trim())$('lyricsToolStatus').textContent='Transcript cleanup found no lyrics, so the original file text was kept.';
+
   if($('lyricsText').value.trim()&&!confirm('Replace the current lyrics with the imported text?'))return;
   $('lyricsText').value=imported;
-  $('lyricsToolStatus').textContent='Imported '+selected.name+' and removed transcript timestamps. Review the text before downloading.';
+  $('lyricsToolStatus').textContent='Imported '+selected.name+' ('+selected.size+' bytes). Review the text before downloading.';
  }catch(err){$('lyricsToolStatus').textContent='Could not import lyrics: '+err.message}
  finally{e.target.value=''}
 });
