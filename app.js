@@ -106,13 +106,13 @@ extract.addEventListener('click',async()=>{
  finally{extract.disabled=false}
 });
 function lyricsFileName(ext){
- const title=$('trackTitle').value.trim()||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
- const artist=$('artist').value.trim();
+ const title=($('trackTitle').value.trim().toLowerCase()==='unknown'?'':$('trackTitle').value.trim())||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
+ const artist=$('artist').value.trim().toLowerCase()==='unknown'?'':$('artist').value.trim();
  return [title,artist].filter(Boolean).map(safe).join(' - ')+' - Lyrics.'+ext;
 }
 function lyricsParts(){
- const title=$('trackTitle').value.trim()||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
- return {title,artist:$('artist').value.trim(),production:$('production').value.trim(),lines:$('lyricsText').value.replace(/\r\n?/g,'\n').split('\n')};
+ const title=($('trackTitle').value.trim().toLowerCase()==='unknown'?'':$('trackTitle').value.trim())||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
+ return {title,artist:$('artist').value.trim().toLowerCase()==='unknown'?'':$('artist').value.trim(),production:$('production').value.trim().toLowerCase()==='unknown'?'':$('production').value.trim(),lines:$('lyricsText').value.replace(/\r\n?/g,'\n').split('\n')};
 }
 async function lyricsBlob(){
  if(!window.docx)throw Error('DOCX library unavailable.');
