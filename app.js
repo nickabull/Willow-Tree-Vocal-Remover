@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 const file=$('file'),url=$('url'),extract=$('extract'),status=$('status'),statusText=$('statusText'),results=$('results');
-const SPACE_ID='Politrees/audio-separator_UVR';
+const SPACE_ID='abidlabs/music-separation';
 let currentFile=null, stemUrls=null;
 function busy(text){status.classList.remove('hidden');results.classList.add('hidden');statusText.textContent=text}
 function done(){status.classList.add('hidden');results.classList.remove('hidden')}
@@ -17,16 +17,9 @@ async function separate(upload){
   const {Client,handle_file}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
   const app=await Client.connect(SPACE_ID);
   busy('Uploading and separating your track. The free service may take several minutes…');
-  const inputs=[handle_file(upload),'Mel-Roformer-Viperx-1143',256,false,8,0,'/tmp/audio-separator-models/','output','mp3',0.9,0.0,1,'NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL'];
-  // The upstream Space exposes its button callback as an unnamed Gradio dependency.
-  // Locate the 19-input / 2-output separation action rather than assuming a named API.
-  const deps=app.config?.dependencies||[];
-  const candidates=deps.map((d,i)=>({d,i})).filter(({d})=>d.inputs?.length===19&&d.outputs?.length===2);
-  const roformer=candidates.find(({d})=>(d.targets||[]).some(t=>String(t).toLowerCase().includes('roformer')))||candidates[0];
-  if(!roformer)throw Error('The free separator has changed its API. Please try again later.');
-  const response=await app.predict(roformer.i,inputs);
+  const response=await app.predict('/predict',[handle_file(upload)]);
   const stems=response?.data;
-  if(!Array.isArray(stems)||stems.length<2)throw Error('The service did not return two stems');
+  if(!Array.isArray(stems)||stems.length<2)throw Error('The separator did not return vocals and instrumental');
   const a=fileUrl(stems[0]),b=fileUrl(stems[1]);if(!a||!b)throw Error('Missing audio download links');
   let vocalUrl=a,instUrl=b;
   const nameA=JSON.stringify(stems[0]).toLowerCase(),nameB=JSON.stringify(stems[1]).toLowerCase();
