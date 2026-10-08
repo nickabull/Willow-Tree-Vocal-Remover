@@ -22,3 +22,6 @@ body,button,input,textarea,label,p,.hint,.tag,.download,.upload,.stem-option,.mi
 
 /* More breathing room between the two title lines */
 header h1{line-height:1.02}
+
+/* Improved readability and transparent official PNG */
+body{font-size:22px}.hint{font-size:19px;line-height:1.45}.tag{font-size:25px}.metadata label,.stem-option{font-size:21px}.refresh-button{font-size:20px}input,textarea{font-size:22px!important}button,.upload,.download{font-size:22px}.mix-head p,.mix-buttons span{font-size:20px}.status p,#lyricsToolStatus{font-size:22px}footer{font-size:17px;color:#ddd}.brand{max-width:520px}.official-logo{max-width:min(490px,86vw)}@media(max-width:650px){body{font-size:20px}.hint{font-size:18px}button,.upload,.download{font-size:20px}}
