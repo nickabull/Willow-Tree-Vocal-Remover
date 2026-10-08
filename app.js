@@ -72,8 +72,7 @@ $('mixStop').addEventListener('click',()=>stopMix(true));
 $('original').addEventListener('ended',()=>stopMix(true));
 ids.forEach(id=>{
  $('stem-'+id).addEventListener('change',()=>{
- if(id==='original'&&$('stem-original').checked){$('stem-vocals').checked=false;$('stem-instrumental').checked=false}
- else if(id!=='original'&&$('stem-'+id).checked)$('stem-original').checked=false;
+ if($('stem-'+id).checked){ids.forEach(x=>{if(x!==id)$('stem-'+x).checked=false})}
  ids.forEach(x=>$(x).muted=!$('stem-'+x).checked);updateMix()
  });
  $('wave-'+id).addEventListener('click',e=>{const d=$('original').duration;if(!d)return;const rect=e.target.getBoundingClientRect(),t=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*d;ids.forEach(x=>$(x).currentTime=t);updateMix()})
@@ -96,7 +95,7 @@ function estimateKey(buffer){
  return result+' (estimate)';
 }
 const oldDone=done;
-done=function(){oldDone();stopMix(true);$('stem-original').checked=false;$('stem-vocals').checked=true;$('stem-instrumental').checked=true;ids.forEach(id=>{$(id).muted=!$('stem-'+id).checked;analyseWave(id)});updateMix()};
+done=function(){oldDone();stopMix(true);$('stem-original').checked=true;$('stem-vocals').checked=false;$('stem-instrumental').checked=false;ids.forEach(id=>{$(id).muted=!$('stem-'+id).checked;analyseWave(id)});updateMix()};
 
 /* Lyrics discovery options: avoid claiming unsupported automated transcription. */
 $('findPublishedLyrics').addEventListener('click',()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim();if(!title){$('lyricsToolStatus').textContent='Enter the song title first (and artist if known).';$('trackTitle').focus();return}const query=[title,artist,'lyrics'].filter(Boolean).join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer');$('lyricsToolStatus').textContent='Lyrics search opened in a new tab. Copy any lyrics you are permitted to use into the box below.'});
