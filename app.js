@@ -62,24 +62,52 @@ function renderWave(id){
  samples.forEach((v,i)=>{let bh=Math.max(2,v*h*.86);ctx.fillStyle={original:'#f1c66a',vocals:'#9c83ff',instrumental:'#36e987'}[id];ctx.globalAlpha=i/samples.length<ratio?1:.48;ctx.fillRect(i*w/samples.length,(h-bh)/2,Math.max(1,w/samples.length-1),bh)});
  ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.fillRect(Math.min(w-2,w*ratio),0,2,h);
 }
-function updateMix(){ids.forEach(renderWave);$('mixClock').textContent=formatTime($('original').currentTime)+' / '+formatTime($('original').duration)}
-function stopMix(reset=false){clearInterval(mixInterval);mixInterval=null;ids.forEach(id=>{$(id).pause();if(reset)$(id).currentTime=0});$('mixPlay').textContent='▶ Play';updateMix()}
+function updateMix(){ids.forEach(renderWave);const active=$(selectedStem()),master=$('original');$('mixClock').textContent=formatTime(active.currentTime)+' / '+formatTime(Number.isFinite(active.duration)?active.duration:master.duration)}
+function selectedStem(){return ids.find(id=>$('stem-'+id).checked)||'original'}
+function stopMix(reset=false){
+ clearInterval(mixInterval);mixInterval=null;
+ ids.forEach(id=>{const a=$(id);a.pause();if(reset)try{a.currentTime=0}catch(e){}});
+ $('mixPlay').textContent='▶ Play';updateMix()
+}
 $('mixPlay').addEventListener('click',async()=>{
  if(mixInterval){stopMix();return}
- if(!$('original').src)return;
- const t=$('original').currentTime;
- try{await Promise.all(ids.map(async id=>{const a=$(id);a.muted=!$('stem-'+id).checked;a.currentTime=t;await a.play()}));
- $('mixPlay').textContent='❚❚ Pause';mixInterval=setInterval(()=>{const now=$('original').currentTime;for(const id of ['vocals','instrumental'])if(Math.abs($(id).currentTime-now)>.25)$(id).currentTime=now;updateMix()},90)
- }catch(e){console.warn('Mixer playback failed',e);stopMix()}
+ const id=selectedStem(),a=$(id),master=$('original');
+ if(!a.src)return;
+ const t=Number.isFinite(master.currentTime)?master.currentTime:0;
+ try{
+  ids.forEach(x=>{if(x!==id)$(x).pause()});
+  if(id!=='original'&&Math.abs(a.currentTime-t)>.3)a.currentTime=t;
+  a.muted=false;
+  $('mixPlay').disabled=true;
+  $('mixPlay').textContent='Loading…';
+  await a.play();
+  $('mixPlay').textContent='❚❚ Pause';
+  mixInterval=setInterval(()=>{
+   if(a.paused||a.ended){stopMix(a.ended);return}
+   updateMix();
+  },180);
+ }catch(e){
+  console.warn('Mixer playback failed',e);
+  stopMix();
+  alert('This track could not start playing. Please wait for it to load, or try downloading it.');
+ }finally{$('mixPlay').disabled=false}
 });
 $('mixStop').addEventListener('click',()=>stopMix(true));
-$('original').addEventListener('ended',()=>stopMix(true));
 ids.forEach(id=>{
+ $(id).addEventListener('ended',()=>{if(selectedStem()===id)stopMix(true)});
  $('stem-'+id).addEventListener('change',()=>{
- if($('stem-'+id).checked){ids.forEach(x=>{if(x!==id)$('stem-'+x).checked=false})}
- ids.forEach(x=>$(x).muted=!$('stem-'+x).checked);updateMix()
+  if($('stem-'+id).checked){
+   ids.forEach(x=>{if(x!==id)$('stem-'+x).checked=false});
+  }else if(!ids.some(x=>$('stem-'+x).checked))$('stem-'+id).checked=true;
+  if(mixInterval)stopMix();
+  updateMix();
  });
- $('wave-'+id).addEventListener('click',e=>{const d=$('original').duration;if(!d)return;const rect=e.target.getBoundingClientRect(),t=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*d;ids.forEach(x=>$(x).currentTime=t);updateMix()})
+ $('wave-'+id).addEventListener('click',e=>{
+  const d=$('original').duration;if(!d)return;
+  const rect=e.target.getBoundingClientRect(),t=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*d;
+  ids.forEach(x=>{try{$(x).currentTime=t}catch(e){}});
+  updateMix();
+ });
 });
 window.addEventListener('resize',()=>{if(!results.classList.contains('hidden'))updateMix()});
 function peaksFor(buffer){const data=buffer.getChannelData(0),n=160,block=Math.ceil(data.length/n);return Array.from({length:n},(_,i)=>{let peak=0;for(let p=i*block;p<Math.min(data.length,(i+1)*block);p+=Math.max(1,Math.floor(block/100)))peak=Math.max(peak,Math.abs(data[p]));return Math.max(.02,peak)})}
