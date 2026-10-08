@@ -53,12 +53,16 @@ function save(blob,name){const a=document.createElement('a'),u=URL.createObjectU
 function note(s){$('downloadStatus').textContent=s}
 $('downloadLyrics').addEventListener('click',async()=>{try{note('Creating Word document…');save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready.')}catch(e){note(e.message)}});
 /* Waveform and synchronised playback */
-const ids=['original','vocals','instrumental'],waves={};let mixInterval=null;
+const ids=['original','vocals','instrumental'],waves={},waveStates={};let mixInterval=null;
 const formatTime=t=>{t=Number.isFinite(t)?t:0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
 function renderWave(id){
  const el=$('wave-'+id),ctx=el.getContext('2d'),w=el.width=Math.max(100,Math.round(el.clientWidth*devicePixelRatio)),h=el.height=92*devicePixelRatio;
- const samples=waves[id]||Array(160).fill(.06),master=$('original'),ratio=master.duration?master.currentTime/master.duration:0;
+ const samples=waves[id]||Array(160).fill(.06),master=$(typeof selectedStem==='function'?selectedStem():'original'),ratio=master.duration?master.currentTime/master.duration:0;
  ctx.fillStyle='#222229';ctx.fillRect(0,0,w,h);
+ if(waveStates[id]!=='ready'){
+  ctx.fillStyle='#d9d4df';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold '+Math.round(17*devicePixelRatio)+'px Arial, sans-serif';
+  ctx.fillText(waveStates[id]==='error'?'PREVIEW UNAVAILABLE':'PROCESSING…',w/2,h/2);return;
+ }
  samples.forEach((v,i)=>{let bh=Math.max(2,v*h*.86);ctx.fillStyle={original:'#f1c66a',vocals:'#9c83ff',instrumental:'#36e987'}[id];ctx.globalAlpha=i/samples.length<ratio?1:.48;ctx.fillRect(i*w/samples.length,(h-bh)/2,Math.max(1,w/samples.length-1),bh)});
  ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.fillRect(Math.min(w-2,w*ratio),0,2,h);
 }
@@ -112,8 +116,9 @@ ids.forEach(id=>{
 window.addEventListener('resize',()=>{if(!results.classList.contains('hidden'))updateMix()});
 function peaksFor(buffer){const data=buffer.getChannelData(0),n=160,block=Math.ceil(data.length/n);return Array.from({length:n},(_,i)=>{let peak=0;for(let p=i*block;p<Math.min(data.length,(i+1)*block);p+=Math.max(1,Math.floor(block/100)))peak=Math.max(peak,Math.abs(data[p]));return Math.max(.02,peak)})}
 async function analyseWave(id){
- try{const response=await fetch($(id).src);if(!response.ok)throw Error('fetch failed');const context=new (window.AudioContext||window.webkitAudioContext)(),buffer=await context.decodeAudioData(await response.arrayBuffer());waves[id]=peaksFor(buffer);if(id==='original')$('detectedKey').textContent='Musical key: '+estimateKey(buffer);await context.close()}
- catch(e){console.warn('Analysis unavailable',id,e);waves[id]=Array(160).fill(.06);if(id==='original')$('detectedKey').textContent='Musical key: unavailable for this file'}
+ waveStates[id]='loading';renderWave(id);
+ try{const response=await fetch($(id).src);if(!response.ok)throw Error('fetch failed');const context=new (window.AudioContext||window.webkitAudioContext)(),buffer=await context.decodeAudioData(await response.arrayBuffer());waves[id]=peaksFor(buffer);waveStates[id]='ready';if(id==='original')$('detectedKey').textContent='Musical key: '+estimateKey(buffer);await context.close()}
+ catch(e){console.warn('Analysis unavailable',id,e);waves[id]=Array(160).fill(.06);waveStates[id]='error';if(id==='original')$('detectedKey').textContent='Musical key: unavailable for this file'}
  updateMix()
 }
 /* Approximate key from pitch-class energy. A guide, not a definitive musicological result. */
@@ -127,7 +132,7 @@ function estimateKey(buffer){
  return result+' (estimate)';
 }
 const oldDone=done;
-done=function(){oldDone();stopMix(true);$('stem-original').checked=true;$('stem-vocals').checked=false;$('stem-instrumental').checked=false;ids.forEach(id=>{$(id).muted=!$('stem-'+id).checked;analyseWave(id)});updateMix()};
+done=function(){ids.forEach(id=>{waveStates[id]='loading';delete waves[id]});oldDone();stopMix(true);$('stem-original').checked=true;$('stem-vocals').checked=false;$('stem-instrumental').checked=false;ids.forEach(id=>{$(id).muted=!$('stem-'+id).checked;analyseWave(id)});updateMix()};
 
 /* Lyrics discovery options: avoid claiming unsupported automated transcription. */
 $('findPublishedLyrics').addEventListener('click',()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim();if(!title){$('lyricsToolStatus').textContent='Enter the song title first (and artist if known).';$('trackTitle').focus();return}const query=[title,artist,'lyrics'].filter(Boolean).join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer');$('lyricsToolStatus').textContent='Lyrics search opened in a new tab. Copy any lyrics you are permitted to use into the box below.'});
