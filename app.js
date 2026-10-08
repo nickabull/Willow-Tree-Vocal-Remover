@@ -105,31 +105,46 @@ extract.addEventListener('click',async()=>{
  }catch(e){fail(new Error('Could not import this audio link. The source may block browser downloads (CORS), or the file may be unavailable. '+(e?.message||'')))}
  finally{extract.disabled=false}
 });
+function lyricsFileName(ext){
+ const title=$('trackTitle').value.trim()||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
+ const artist=$('artist').value.trim();
+ return [title,artist].filter(Boolean).map(safe).join(' - ')+' - Lyrics.'+ext;
+}
+function lyricsParts(){
+ const title=$('trackTitle').value.trim()||$('lyricsText').value.split(/\r?\n/).map(x=>x.trim()).find(Boolean)?.replace(/^["“”']+|["“”']+$/g,'')||'Untitled Song';
+ return {title,artist:$('artist').value.trim(),production:$('production').value.trim(),lines:$('lyricsText').value.replace(/\r\n?/g,'\n').split('\n')};
+}
 async function lyricsBlob(){
  if(!window.docx)throw Error('DOCX library unavailable.');
- const {Document,Paragraph,TextRun,Packer}=window.docx;
- const title=[$('trackTitle').value,$('artist').value,$('production').value].map(s=>s.trim());
- const lines=$('lyricsText').value.split(/\r?\n/);
- const children=[...title.map((s,i)=>new Paragraph({children:[new TextRun({text:s||'Unknown',bold:i===0,size:i===0?32:22})],spacing:{after:120}})),new Paragraph({text:''}),...lines.map(line=>new Paragraph({text:line,spacing:{after:60}}))];
- return Packer.toBlob(new Document({sections:[{children}]}));
+ const {Document,Paragraph,TextRun,Packer,AlignmentType}=window.docx;
+ const {title,artist,production,lines}=lyricsParts();
+ const heading=(text,size,bold=false)=>new Paragraph({children:[new TextRun({text,bold,size,font:'Arial',color:'222222'})],alignment:AlignmentType.CENTER,spacing:{after:140}});
+ const children=[heading(title,36,true)];
+ if(artist)children.push(heading(artist,24));
+ if(production)children.push(heading(production,21));
+ children.push(new Paragraph({text:'',spacing:{after:180}}));
+ for(const line of lines)children.push(new Paragraph({children:[new TextRun({text:line,font:'Arial',size:23})],spacing:{after:line.trim()?70:180},keepNext:false}));
+ return Packer.toBlob(new Document({sections:[{properties:{page:{margin:{top:1080,bottom:1080,left:1260,right:1260}}},children}]}));
 }
 function save(blob,name){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 function note(s){$('downloadStatus').textContent=s}
 function wordCompatibleDoc(){
  const escape=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
- const headings=[$('trackTitle').value,$('artist').value,$('production').value].map((s,i)=>'<p style="font-size:'+(i===0?'20':'13')+'pt;font-weight:'+(i===0?'bold':'normal')+'">'+escape(s.trim()||'')+'</p>').join('');
- const lyrics=$('lyricsText').value.split(/\\r?\\n/).map(line=>'<p style="margin:0 0 4pt">'+(escape(line)||'&nbsp;')+'</p>').join('');
- const doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Willow Tree Lyrics</title></head><body style="font-family:Arial,sans-serif">'+headings+'<hr>'+lyrics+'</body></html>';
- return new Blob(['\\ufeff',doc],{type:'application/msword'});
+ const {title,artist,production,lines}=lyricsParts();
+ const sub=[artist,production].filter(Boolean).map(s=>'<div class="subtitle">'+escape(s)+'</div>').join('');
+ const lyrics=lines.map(line=>line.trim()?'<p class="line">'+escape(line)+'</p>':'<p class="stanza">&nbsp;</p>').join('');
+ const doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+escape(title)+'</title><style>@page{size:A4;margin:2cm 2.3cm}body{font-family:Arial,Helvetica,sans-serif;color:#222;font-size:11.5pt;line-height:1.35}h1{text-align:center;font-size:20pt;margin:0 0 8pt}.subtitle{text-align:center;font-size:11pt;margin:0 0 5pt;color:#555}.lyrics{margin-top:26pt}.line{margin:0 0 4pt;page-break-inside:avoid}.stanza{margin:0 0 10pt}</style></head><body><h1>'+escape(title)+'</h1>'+sub+'<div class="lyrics">'+lyrics+'</div></body></html>';
+ return new Blob(['\ufeff',doc],{type:'application/msword'});
 }
 $('downloadLyrics').addEventListener('click',async()=>{
+ if(!$('lyricsText').value.trim()){note('Please import or enter lyrics first.');return}
  try{
   note('Creating Word document…');
-  if(window.docx){save(await lyricsBlob(),filename('Lyrics','docx'));note('Word document ready (.docx).')}
-  else{save(wordCompatibleDoc(),filename('Lyrics','doc'));note('Word-compatible document ready (.doc). It opens in Microsoft Word; use Save As to convert to .docx if needed.')}
+  if(window.docx){save(await lyricsBlob(),lyricsFileName('docx'));note('Word document ready (.docx).')}
+  else{save(wordCompatibleDoc(),lyricsFileName('doc'));note('Formatted Word-compatible document ready (.doc). Open in Word and Save As .docx if required.')}
  }catch(e){
   console.warn('DOCX generation failed, using Word-compatible fallback',e);
-  try{save(wordCompatibleDoc(),filename('Lyrics','doc'));note('Word-compatible document ready (.doc). Use Save As in Word for .docx.')}
+  try{save(wordCompatibleDoc(),lyricsFileName('doc'));note('Formatted Word-compatible document ready (.doc).')}
   catch(fallbackError){note('Word download failed: '+fallbackError.message)}
  }
 });
@@ -177,7 +192,7 @@ $('cleanLyrics').addEventListener('click',()=>{
 });
 $('downloadLyricsTxt').addEventListener('click',()=>{
  const value=$('lyricsText').value;if(!value.trim()){note('Add some lyrics first.');return}
- save(new Blob([value],{type:'text/plain;charset=utf-8'}),filename('Lyrics','txt'));note('Text lyrics downloaded.');
+ save(new Blob([value],{type:'text/plain;charset=utf-8'}),lyricsFileName('txt'));note('Text lyrics downloaded.');
 });
 $('copyLyrics').addEventListener('click',async()=>{
  const value=$('lyricsText').value;if(!value.trim()){note('Add some lyrics first.');return}
