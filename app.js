@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const file=$('file'),url=$('url'),extract=$('extract'),status=$('status'),statusText=$('statusText'),results=$('results');
 const SPACE_ID='abidlabs/music-separation';
-let currentFile=null, stemUrls=null,activeRequest=0,originalObjectUrl=null;
+let currentFile=null, stemUrls=null,activeRequest=0,originalObjectUrl=null,localStemUrls=[],stemExtension='mp3',browserSeparator=null;
 function busy(text){$('retrySeparation').classList.add('hidden');status.classList.add('is-processing');status.classList.remove('hidden');results.classList.add('hidden');$('localFallback').classList.add('hidden');statusText.textContent=text}
 function done(){$('retrySeparation').classList.add('hidden');status.classList.remove('is-processing');status.classList.add('hidden');results.classList.remove('hidden')}
 function fail(e){$('retrySeparation').classList.toggle('hidden',!currentFile);status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. You can try the alternative service below, or try again later.':'Separation failed: '+message}
@@ -9,7 +9,7 @@ function safe(s){return (s||'Unknown').replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim
 function base(){return [safe($('trackTitle').value),safe($('artist').value),safe($('production').value)].join(' - ')}
 function filename(kind,ext){return base()+' ('+kind+').'+ext}
 function extFrom(name){return (name?.split('.').pop()||'mp3').toLowerCase().replace(/[^a-z0-9]/g,'')||'mp3'}
-function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals','mp3');$('downloadInstrumental').download=filename('Instrumental','mp3')}
+function updateNames(){if(!currentFile)return;$('downloadOriginal').download=filename('Full Track',extFrom(currentFile.name));$('downloadVocals').download=filename('Vocals',stemExtension);$('downloadInstrumental').download=filename('Instrumental',stemExtension)}
 ['trackTitle','artist','production'].forEach(id=>$(id).addEventListener('input',updateNames));
 function fileUrl(x){return typeof x==='string'?x:x?.url||x?.path||''}
 async function separate(upload){
@@ -26,14 +26,50 @@ async function separate(upload){
   let vocalUrl=a,instUrl=b;
   const nameA=JSON.stringify(stems[0]).toLowerCase(),nameB=JSON.stringify(stems[1]).toLowerCase();
   if(nameA.includes('instrument')||nameA.includes('other')||nameB.includes('vocal')){vocalUrl=b;instUrl=a}
-  stemUrls={vocals:vocalUrl,instrumental:instUrl};
+  stemExtension='mp3';stemUrls={vocals:vocalUrl,instrumental:instUrl};
   if(originalObjectUrl)URL.revokeObjectURL(originalObjectUrl);
   const originalUrl=URL.createObjectURL(upload);originalObjectUrl=originalUrl;
   for(const [id,link] of [['original',originalUrl],['vocals',vocalUrl],['instrumental',instUrl]]){$(id).src=link;$('download'+id[0].toUpperCase()+id.slice(1)).href=link}
   updateNames();done();
 }
 
-$('retrySeparation').addEventListener('click',async()=>{if(!currentFile)return;try{await separate(currentFile)}catch(e){console.error(e);fail(e)}});
+/* Browser fallback: runs entirely on the user's device, no cloud upload. */
+async function browserSeparate(upload,requestId){
+ busy('Cloud quota unavailable. Loading the browser separator (first use downloads approximately 67 MB)…');
+ const {createSeparator}=await import('https://esm.sh/web-audio-separation@0.3.1?bundle');
+ if(requestId!==activeRequest)return;
+ if(!browserSeparator){browserSeparator=createSeparator('UVR-MDX-NET-Voc_FT');await browserSeparator.loadModel()}
+ if(requestId!==activeRequest)return;
+ busy('Separating vocals in your browser. This can take several minutes…');
+ const inputUrl=URL.createObjectURL(upload);
+ let stems;
+ try{stems=await browserSeparator.separate(inputUrl)}finally{URL.revokeObjectURL(inputUrl)}
+ if(requestId!==activeRequest){if(Array.isArray(stems))stems.forEach(u=>{if(typeof u==='string'&&u.startsWith('blob:'))URL.revokeObjectURL(u)});return}
+ if(!Array.isArray(stems)||stems.length<2)throw Error('Browser separator returned no audio stems');
+ // UVR-MDX-NET-Voc_FT primary stem is vocals, followed by instrumental.
+ const [vocalUrl,instUrl]=stems;
+ localStemUrls.forEach(u=>URL.revokeObjectURL(u));localStemUrls=[vocalUrl,instUrl];
+ stemExtension='wav';stemUrls={vocals:vocalUrl,instrumental:instUrl};
+ if(originalObjectUrl)URL.revokeObjectURL(originalObjectUrl);
+ originalObjectUrl=URL.createObjectURL(upload);
+ for(const [id,link] of [['original',originalObjectUrl],['vocals',vocalUrl],['instrumental',instUrl]]){$(id).src=link;$('download'+id[0].toUpperCase()+id.slice(1)).href=link}
+ updateNames();done();
+}
+async function handleSeparationError(e,upload){
+ console.warn('Cloud separation failed',e);
+ const message=e?.message||'';
+ if(/ZeroGPU quota|quota.*exceed|0s left/i.test(message)){
+  const requestId=activeRequest;
+  try{await browserSeparate(upload,requestId);return}catch(localError){
+   console.error('Browser fallback failed',localError);
+   if(requestId!==activeRequest)return;
+   fail(new Error('Cloud quota exhausted, and browser processing could not start: '+(localError?.message||'unknown error')+'. Try the alternative website below.'));
+   $('localFallback').classList.remove('hidden');return;
+  }
+ }
+ if(upload===currentFile)fail(e);
+}
+$('retrySeparation').addEventListener('click',async()=>{if(!currentFile)return;try{await separate(currentFile)}catch(e){await handleSeparationError(e,currentFile)}});
 file.addEventListener('change',async()=>{
  const chosen=file.files?.[0];if(!chosen)return;
  if(chosen.size>40*1024*1024){fail(new Error('Please choose an audio file smaller than 40 MB.'));file.value='';return}
@@ -41,10 +77,10 @@ file.addEventListener('change',async()=>{
  ++activeRequest;
  if(typeof stopMix==='function')stopMix(true);
  results.classList.add('hidden');status.classList.add('hidden');
- currentFile=chosen;stemUrls=null;
+ currentFile=chosen;stemUrls=null;stemExtension='mp3';
  const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
- updateNames();try{await separate(chosen)}catch(e){console.error(e);fail(e)}
+ updateNames();try{await separate(chosen)}catch(e){await handleSeparationError(e,chosen)}
 });
 extract.addEventListener('click',()=>{if(!url.value.trim()){url.focus();return}status.classList.remove('hidden');statusText.textContent='YouTube-link processing is not yet available. Please upload an audio file.'});
 async function lyricsBlob(){
