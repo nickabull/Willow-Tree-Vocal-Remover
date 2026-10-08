@@ -32,6 +32,8 @@ async function separate(upload){
 
 file.addEventListener('change',async()=>{
  const chosen=file.files?.[0];if(!chosen)return;
+ if(chosen.size>40*1024*1024){fail(new Error('Please choose an audio file smaller than 40 MB.'));file.value='';return}
+ if(!chosen.type.startsWith('audio/')&&!/\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(chosen.name)){fail(new Error('Please choose an MP3, WAV, M4A, AAC, FLAC or OGG audio file.'));file.value='';return}
  currentFile=chosen;stemUrls=null;
  const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
