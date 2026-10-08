@@ -18,7 +18,13 @@ async function separate(upload){
   const app=await Client.connect(SPACE_ID);
   busy('Uploading and separating your track. The free service may take several minutes…');
   const inputs=[handle_file(upload),'Mel-Roformer-Viperx-1143',256,false,8,0,'/tmp/audio-separator-models/','output','mp3',0.9,0.0,1,'NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL','NAME_(STEM)_MODEL'];
-  const response=await app.predict('/roformer_separator',inputs);
+  // The upstream Space exposes its button callback as an unnamed Gradio dependency.
+  // Locate the 19-input / 2-output separation action rather than assuming a named API.
+  const deps=app.config?.dependencies||[];
+  const candidates=deps.map((d,i)=>({d,i})).filter(({d})=>d.inputs?.length===19&&d.outputs?.length===2);
+  const roformer=candidates.find(({d})=>(d.targets||[]).some(t=>String(t).toLowerCase().includes('roformer')))||candidates[0];
+  if(!roformer)throw Error('The free separator has changed its API. Please try again later.');
+  const response=await app.predict(roformer.i,inputs);
   const stems=response?.data;
   if(!Array.isArray(stems)||stems.length<2)throw Error('The service did not return two stems');
   const a=fileUrl(stems[0]),b=fileUrl(stems[1]);if(!a||!b)throw Error('Missing audio download links');
@@ -33,8 +39,8 @@ async function separate(upload){
 file.addEventListener('change',async()=>{
  const chosen=file.files?.[0];if(!chosen)return;
  currentFile=chosen;stemUrls=null;
- const guessed=chosen.name.replace(/\.[^.]+$/,'').split(/\s+-\s+/);
- $('trackTitle').value=guessed[0]||'';if(guessed.length>1)$('artist').value=guessed[1];if(guessed.length>2)$('production').value=guessed.slice(2).join(' - ');
+ const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
+ $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
  updateNames();try{await separate(chosen)}catch(e){console.error(e);fail(e)}
 });
 extract.addEventListener('click',()=>{if(!url.value.trim()){url.focus();return}status.classList.remove('hidden');statusText.textContent='YouTube-link processing is not yet available. Please upload an audio file.'});
