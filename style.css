@@ -19,3 +19,6 @@ body,button,input,textarea,label,p,.hint,.tag,.download,.upload,.stem-option,.mi
 
 /* Original Illustrator artwork will display as soon as willow-original.svg is uploaded. */
 .official-logo{display:block;max-width:min(400px,85vw);width:100%;height:auto;margin:0 auto}.logo-fallback[hidden]{display:none}.brand:has(.official-logo:not([hidden])) .logo-fallback{display:none}.brand:has(.official-logo[hidden]) .logo-fallback{display:block}.brand{max-width:440px}.status:not(.is-processing) .spinner{display:none}.status:not(.is-processing){padding:22px 14px}.status:not(.is-processing) strong{display:none}
+
+/* More breathing room between the two title lines */
+header h1{line-height:1.02}
