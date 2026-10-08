@@ -46,8 +46,8 @@ async function browserSeparate(upload,requestId){
  try{stems=await browserSeparator.separate(inputUrl)}finally{URL.revokeObjectURL(inputUrl)}
  if(requestId!==activeRequest){if(Array.isArray(stems))stems.forEach(u=>{if(typeof u==='string'&&u.startsWith('blob:'))URL.revokeObjectURL(u)});return}
  if(!Array.isArray(stems)||stems.length<2)throw Error('Browser separator returned no audio stems');
- // UVR-MDX-NET-Voc_FT primary stem is vocals, followed by instrumental.
- const [vocalUrl,instUrl]=stems;
+ // Browser engine returns instrumental first, vocals second (verified by user listening).
+ const [instUrl,vocalUrl]=stems;
  localStemUrls.forEach(u=>URL.revokeObjectURL(u));localStemUrls=[vocalUrl,instUrl];
  stemExtension='wav';stemUrls={vocals:vocalUrl,instrumental:instUrl};
  if(originalObjectUrl)URL.revokeObjectURL(originalObjectUrl);
