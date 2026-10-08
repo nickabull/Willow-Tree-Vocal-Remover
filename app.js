@@ -4,7 +4,7 @@ const SPACE_ID='abidlabs/music-separation';
 let currentFile=null, stemUrls=null,activeRequest=0,originalObjectUrl=null,localStemUrls=[],stemExtension='mp3',browserSeparator=null;
 function busy(text){$('retrySeparation').classList.add('hidden');status.classList.add('is-processing');status.classList.remove('hidden');results.classList.add('hidden');$('localFallback').classList.add('hidden');statusText.textContent=text}
 function done(){$('retrySeparation').classList.add('hidden');status.classList.remove('is-processing');status.classList.add('hidden');results.classList.remove('hidden')}
-function fail(e){$('retrySeparation').classList.toggle('hidden',!currentFile);status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);$('localFallback').classList.toggle('hidden',!quota);statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. You can try the alternative service below, or try again later.':'Separation failed: '+message}
+function fail(e){$('retrySeparation').classList.toggle('hidden',!currentFile);status.classList.remove('is-processing');status.classList.remove('hidden');results.classList.add('hidden');const message=e?.message||'Please try again.';const quota=/ZeroGPU quota|quota.*exceed|0s left/i.test(message);const offline=/Space metadata could not be loaded|failed to fetch|connection|network/i.test(message);$('localFallback').classList.toggle('hidden',!(quota||offline));statusText.textContent=quota?'The free cloud processor has run out of GPU allowance. Your audio file is fine. Try browser separation or again later.':offline?'The free cloud separator is temporarily unreachable. Your audio file is fine. Try browser separation or retry later.':'Separation failed: '+message}
 function safe(s){return (s||'Unknown').replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim().replace(/\s+/g,' ').slice(0,100)||'Unknown'}
 function base(){return [safe($('trackTitle').value),safe($('artist').value),safe($('production').value)].join(' - ')}
 function filename(kind,ext){return base()+' ('+kind+').'+ext}
@@ -58,12 +58,12 @@ async function browserSeparate(upload,requestId){
 async function handleSeparationError(e,upload){
  console.warn('Cloud separation failed',e);
  const message=e?.message||'';
- if(/ZeroGPU quota|quota.*exceed|0s left/i.test(message)){
+ if(/ZeroGPU quota|quota.*exceed|0s left|Space metadata could not be loaded|failed to fetch/i.test(message)){
   const requestId=activeRequest;
   try{await browserSeparate(upload,requestId);return}catch(localError){
    console.error('Browser fallback failed',localError);
    if(requestId!==activeRequest)return;
-   fail(new Error('Cloud quota exhausted, and browser processing could not start: '+(localError?.message||'unknown error')+'. Try the alternative website below.'));
+   fail(new Error('Cloud separator unavailable, and browser processing could not start: '+(localError?.message||'unknown error')+'. Try the alternative website below.'));
    $('localFallback').classList.remove('hidden');return;
   }
  }
