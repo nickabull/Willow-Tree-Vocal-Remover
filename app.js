@@ -35,7 +35,7 @@ async function separate(upload){
 
 /* Browser fallback: runs entirely on the user's device, no cloud upload. */
 async function browserSeparate(upload,requestId){
- busy('Cloud quota unavailable. Loading the browser separator (first use downloads approximately 67 MB)…');
+ busy('Loading the browser separator (first use downloads approximately 67 MB)…');
  const {createSeparator}=await import('https://esm.sh/web-audio-separation@0.3.1?bundle');
  if(requestId!==activeRequest)return;
  if(!browserSeparator){browserSeparator=createSeparator('UVR-MDX-NET-Voc_FT');await browserSeparator.loadModel()}
@@ -80,7 +80,7 @@ file.addEventListener('change',async()=>{
  currentFile=chosen;stemUrls=null;stemExtension='mp3';
  const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
- updateNames();try{await separate(chosen)}catch(e){await handleSeparationError(e,chosen)}
+ updateNames();if($('processingMode').value==='browser'){const requestId=++activeRequest;try{await browserSeparate(chosen,requestId)}catch(e){if(requestId===activeRequest){console.error('Browser separation failed',e);fail(new Error('Browser separation failed: '+(e?.message||'Unknown error')));$('localFallback').classList.remove('hidden')}}}else{try{await separate(chosen)}catch(e){await handleSeparationError(e,chosen)}}
 });
 extract.addEventListener('click',()=>{if(!url.value.trim()){url.focus();return}status.classList.remove('hidden');statusText.textContent='YouTube-link processing is not yet available. Please upload an audio file.'});
 async function lyricsBlob(){
