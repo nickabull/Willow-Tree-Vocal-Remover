@@ -282,7 +282,43 @@ done=function(){ids.forEach(id=>{waveStates[id]='loading';delete waves[id]});old
 
 /* Lyrics discovery options: avoid claiming unsupported automated transcription. */
 $('findPublishedLyrics').addEventListener('click',()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim();if(!title){$('lyricsToolStatus').textContent='Enter the song title first (and artist if known).';$('trackTitle').focus();return}const query=[title,artist,'lyrics'].filter(Boolean).join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer');$('lyricsToolStatus').textContent='Lyrics search opened in a new tab. Copy any lyrics you are permitted to use into the box below.'});
-$('transcribeLyrics').addEventListener('click',()=>{$('lyricsToolStatus').textContent=currentFile?'Automatic singing transcription is not yet connected. You can import a TXT, SRT, VTT or LRC transcript, edit it, and export Word or text.':'Automatic singing transcription needs a suitable recognition model and is not connected yet. Import or paste lyrics in the meantime.'});
+/* Experimental local speech recognition: first 30 seconds, no audio upload. */
+let localTranscriber=null;
+$('transcribeLyrics').addEventListener('click',async()=>{
+ const info=$('lyricsToolStatus'),button=$('transcribeLyrics');
+ if(!currentFile){info.textContent='Upload an audio track first, then try transcription.';return}
+ if($('lyricsText').value.trim()&&!confirm('Replace the existing lyrics with an experimental transcription?'))return;
+ button.disabled=true;
+ try{
+  info.textContent='Loading free speech recognition model (first use requires a large download)…';
+  if(!localTranscriber){
+   const {pipeline,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');
+   env.allowLocalModels=false;
+   localTranscriber=await pipeline('automatic-speech-recognition','onnx-community/whisper-tiny.en',{dtype:'q8',device:'wasm'});
+  }
+  info.textContent='Decoding the first 30 seconds of audio…';
+  const ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+  let audio;
+  try{
+   const decoded=await ctx.decodeAudioData(await currentFile.arrayBuffer());
+   const duration=Math.min(30,decoded.duration);
+   const offline=new OfflineAudioContext(1,Math.max(1,Math.ceil(duration*16000)),16000);
+   const source=offline.createBufferSource();source.buffer=decoded;
+   source.connect(offline.destination);source.start(0,0,duration);
+   const rendered=await offline.startRendering();
+   audio=rendered.getChannelData(0);
+  }finally{await ctx.close()}
+  info.textContent='Transcribing a short sample. This may take a few minutes…';
+  const output=await localTranscriber(audio,{language:'english',task:'transcribe',chunk_length_s:30});
+  const words=String(output?.text||'').trim();
+  if(!words)throw Error('No recognisable words found in the sample.');
+  $('lyricsText').value=words;
+  info.textContent='Experimental transcription of the first 30 seconds is ready. Singing recognition may be inaccurate; review and edit before exporting.';
+ }catch(e){
+  console.error('Local lyrics transcription failed',e);
+  info.textContent='Transcription unavailable: '+(e?.message||'unknown error')+'. You can still import or paste lyrics.';
+ }finally{button.disabled=false}
+});
 
 /* Free MusicBrainz metadata search (not audio fingerprint recognition). */
 $('lookupTrack').addEventListener('click',async()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim(),output=$('lookupStatus');if(!title){output.textContent='Enter a song title, or upload a file with the title in its filename.';return}output.textContent='Searching MusicBrainz catalogue…';try{const q='recording:'+JSON.stringify(title)+(artist?' AND artist:'+JSON.stringify(artist):'');const endpoint='https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=5';const response=await fetch(endpoint,{headers:{Accept:'application/json'}});if(!response.ok)throw Error('Catalogue lookup temporarily unavailable');const data=await response.json();const recording=(data.recordings||[]).find(x=>x.title&&x['artist-credit']?.length);if(!recording){output.textContent='No matching song found. You can still enter the details manually.';return}const performer=recording['artist-credit'].map(x=>typeof x==='string'?x:x.name||x.artist?.name||'').join('').trim();$('trackTitle').value=recording.title;if(performer)$('artist').value=performer;const release=recording.releases?.[0]?.title;if(release&&!$('production').value.trim())$('production').value=release;updateNames();output.textContent='Found a possible match in MusicBrainz. Please check the details; this is a title search, not Shazam-style audio recognition.'}catch(e){output.textContent='Song lookup unavailable right now. Please enter the details manually.'}});
