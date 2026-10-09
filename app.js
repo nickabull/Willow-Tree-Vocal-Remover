@@ -345,10 +345,31 @@ function queueSelect(i,play){if(i<0||i>=queueTracks.length)return;queueIndex=i;q
 function queueAdd(f){const track={title:f.name.replace(/\\.[^.]+$/,'').replace(/[_]+/g,' '),artist:'ORIGINAL AUDIO',url:URL.createObjectURL(f)};queueTracks.push(track);if(queueIndex<0)queueSelect(0,false);else queueRender()}
 $('queueToggle').addEventListener('click',()=>{if(queueIndex<0)return;if(queueAudio.paused)queueAudio.play().catch(e=>console.warn('Playback unavailable',e));else queueAudio.pause()});
 $('queuePrevious').addEventListener('click',()=>queueSelect(Math.max(0,queueIndex-1),true));
-$('queueNext').addEventListener('click',()=>queueSelect((queueIndex+1)%queueTracks.length,true));
+$('queueNext').addEventListener('click',()=>{if(queueTracks.length)queueSelect((queueIndex+1)%queueTracks.length,true)});
 queueAudio.addEventListener('ended',()=>{if(queueIndex+1<queueTracks.length)queueSelect(queueIndex+1,true);else queueRender()});
 for(const event of ['play','pause'])queueAudio.addEventListener(event,queueRender);
 queueAudio.addEventListener('timeupdate',()=>{const duration=queueAudio.duration;$('queueTime').textContent=queueClock(queueAudio.currentTime)+' / '+queueClock(duration);$('queueSeek').value=Number.isFinite(duration)&&duration>0?Math.round(queueAudio.currentTime/duration*1000):0});
 $('queueSeek').addEventListener('input',()=>{if(Number.isFinite(queueAudio.duration))queueAudio.currentTime=Number($('queueSeek').value)/1000*queueAudio.duration});
 $('queueClear').addEventListener('click',()=>{queueAudio.pause();queueAudio.removeAttribute('src');queueAudio.load();queueTracks.forEach(t=>URL.revokeObjectURL(t.url));queueTracks.length=0;queueIndex=-1;queueRender()});
 queueRender();
+
+/* Add independent audio tracks to the playout list, including finished instrumentals. */
+$('queueImport').addEventListener('change',e=>{for(const f of e.target.files||[]){if((f.type.startsWith('audio/')||/\.(mp3|wav|m4a|ogg|flac|aac)$/i.test(f.name))&&f.size<=40*1024*1024)queueAdd(f,/instrumental|backing|karaoke/i.test(f.name)?'INSTRUMENTAL':'IMPORTED AUDIO')}e.target.value=''});
+/* Catalogue identification only: no streaming audio or DRM access. */
+$('identifyLink').addEventListener('click',async()=>{
+ const output=$('musicReferenceStatus');let link;try{link=new URL($('musicReference').value.trim())}catch{output.textContent='Paste a valid Spotify or Apple Music song link.';return}
+ const host=link.hostname.toLowerCase();if(!/(^|\.)(spotify\.com|apple\.com)$/.test(host)){output.textContent='Please use a Spotify or Apple Music song link.';return}
+ output.textContent='Looking up track details…';
+ try{
+  let title='',artist='';
+  if(host.endsWith('spotify.com')){
+   const response=await fetch('https://open.spotify.com/oembed?url='+encodeURIComponent(link.href));if(!response.ok)throw Error('Spotify did not provide track metadata');
+   const data=await response.json();title=String(data.title||'').replace(/\s*\|\s*Spotify.*$/i,'').trim();artist=String(data.author_name||'').trim();
+  }else{
+   const id=link.href.match(/[?&]i=(\d+)|\/id(\d+)/);if(!id)throw Error('Apple Music link does not contain a catalogue ID');
+   const response=await fetch('https://itunes.apple.com/lookup?id='+(id[1]||id[2]));if(!response.ok)throw Error('Apple Music lookup unavailable');
+   const data=await response.json();const song=(data.results||[]).find(x=>x.wrapperType==='track');if(!song)throw Error('No track details returned');title=song.trackName||'';artist=song.artistName||'';
+  }
+  if(!title)throw Error('No title found');$('trackTitle').value=title;if(artist)$('artist').value=artist;updateNames();output.textContent='Track identified. Audio must still be uploaded separately.';
+ }catch(e){output.textContent='Could not identify this link automatically: '+(e.message||'unknown error')+'. Enter the title and artist manually.'}
+});
