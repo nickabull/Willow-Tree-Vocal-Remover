@@ -78,6 +78,7 @@ file.addEventListener('change',async()=>{
  if(typeof stopMix==='function')stopMix(true);
  results.classList.add('hidden');status.classList.add('hidden');
  currentFile=chosen;stemUrls=null;stemExtension='mp3';
+ queueAdd(chosen);
  const guessed=chosen.name.replace(/\.[^.]+$/,'').replace(/^\d{1,3}[\s._-]+/,'').replace(/(?:[\s_-]+(?:edit|mixdown|final|master|copy))+$/ig,'').split(/\s+-\s+/);
  $('trackTitle').value=guessed[0]||'';$('artist').value=guessed.length>1?guessed[1]:'';$('production').value=guessed.length>2?guessed.slice(2).join(' - '):'';
  updateNames();if($('processingMode').value==='browser'){const requestId=++activeRequest;try{await browserSeparate(chosen,requestId)}catch(e){if(requestId===activeRequest){console.error('Browser separation failed',e);fail(new Error('Browser separation failed: '+(e?.message||'Unknown error')));$('localFallback').classList.remove('hidden')}}}else{try{await separate(chosen)}catch(e){await handleSeparationError(e,chosen)}}
@@ -328,3 +329,26 @@ $('transcribeLyrics').addEventListener('click',async()=>{
 
 /* Free MusicBrainz metadata search (not audio fingerprint recognition). */
 $('lookupTrack').addEventListener('click',async()=>{const title=$('trackTitle').value.trim(),artist=$('artist').value.trim(),output=$('lookupStatus');if(!title){output.textContent='Enter a song title, or upload a file with the title in its filename.';return}output.textContent='Searching MusicBrainz catalogue…';try{const q='recording:'+JSON.stringify(title)+(artist?' AND artist:'+JSON.stringify(artist):'');const endpoint='https://musicbrainz.org/ws/2/recording/?query='+encodeURIComponent(q)+'&fmt=json&limit=5';const response=await fetch(endpoint,{headers:{Accept:'application/json'}});if(!response.ok)throw Error('Catalogue lookup temporarily unavailable');const data=await response.json();const recording=(data.recordings||[]).find(x=>x.title&&x['artist-credit']?.length);if(!recording){output.textContent='No matching song found. You can still enter the details manually.';return}const performer=recording['artist-credit'].map(x=>typeof x==='string'?x:x.name||x.artist?.name||'').join('').trim();$('trackTitle').value=recording.title;if(performer)$('artist').value=performer;const release=recording.releases?.[0]?.title;if(release&&!$('production').value.trim())$('production').value=release;updateNames();output.textContent='Found a possible match in MusicBrainz. Please check the details; this is a title search, not Shazam-style audio recognition.'}catch(e){output.textContent='Song lookup unavailable right now. Please enter the details manually.'}});
+
+/* Session-only playout list. Original imported audio is playable even if stem separation fails. */
+const queueTracks=[];let queueIndex=-1;
+const queueAudio=$('queueAudio');
+function queueClock(n){if(!Number.isFinite(n))return '0:00';n=Math.floor(n);return Math.floor(n/60)+':'+String(n%60).padStart(2,'0')}
+function queueRender(){
+ $('queueCount').textContent=queueTracks.length+' TRACK'+(queueTracks.length===1?'':'S');
+ $('queueItems').replaceChildren();
+ if(!queueTracks.length){const p=document.createElement('p');p.className='hint';p.textContent='Your playlist is waiting for its first track.';$('queueItems').append(p)}
+ queueTracks.forEach((track,i)=>{const item=document.createElement('button');item.type='button';item.className='queue-item'+(i===queueIndex?' active':'');const number=document.createElement('span');number.className='queue-number';number.textContent=String(i+1).padStart(2,'0');const details=document.createElement('span');details.className='queue-details';const title=document.createElement('strong');title.textContent=track.title;const artist=document.createElement('small');artist.textContent=track.artist||'READY TO PLAY';details.append(title,artist);const action=document.createElement('span');action.textContent=i===queueIndex&&!queueAudio.paused?'♫ PLAYING':'▶';item.append(number,details,action);item.addEventListener('click',()=>queueSelect(i,true));$('queueItems').append(item)});
+ const current=queueTracks[queueIndex];$('queueNowTitle').textContent=current?.title||'NOTHING LOADED';$('queueNowArtist').textContent=current?.artist||'Import a track to get started';$('queueToggle').textContent=queueAudio.paused?'▶ PLAY':'Ⅱ PAUSE';
+}
+function queueSelect(i,play){if(i<0||i>=queueTracks.length)return;queueIndex=i;queueAudio.src=queueTracks[i].url;queueAudio.load();queueRender();if(play)queueAudio.play().catch(e=>console.warn('Playback unavailable',e))}
+function queueAdd(f){const track={title:f.name.replace(/\\.[^.]+$/,'').replace(/[_]+/g,' '),artist:'ORIGINAL AUDIO',url:URL.createObjectURL(f)};queueTracks.push(track);if(queueIndex<0)queueSelect(0,false);else queueRender()}
+$('queueToggle').addEventListener('click',()=>{if(queueIndex<0)return;if(queueAudio.paused)queueAudio.play().catch(e=>console.warn('Playback unavailable',e));else queueAudio.pause()});
+$('queuePrevious').addEventListener('click',()=>queueSelect(Math.max(0,queueIndex-1),true));
+$('queueNext').addEventListener('click',()=>queueSelect((queueIndex+1)%queueTracks.length,true));
+queueAudio.addEventListener('ended',()=>{if(queueIndex+1<queueTracks.length)queueSelect(queueIndex+1,true);else queueRender()});
+for(const event of ['play','pause'])queueAudio.addEventListener(event,queueRender);
+queueAudio.addEventListener('timeupdate',()=>{const duration=queueAudio.duration;$('queueTime').textContent=queueClock(queueAudio.currentTime)+' / '+queueClock(duration);$('queueSeek').value=Number.isFinite(duration)&&duration>0?Math.round(queueAudio.currentTime/duration*1000):0});
+$('queueSeek').addEventListener('input',()=>{if(Number.isFinite(queueAudio.duration))queueAudio.currentTime=Number($('queueSeek').value)/1000*queueAudio.duration});
+$('queueClear').addEventListener('click',()=>{queueAudio.pause();queueAudio.removeAttribute('src');queueAudio.load();queueTracks.forEach(t=>URL.revokeObjectURL(t.url));queueTracks.length=0;queueIndex=-1;queueRender()});
+queueRender();
