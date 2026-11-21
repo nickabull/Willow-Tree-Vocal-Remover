@@ -19,7 +19,7 @@ export const EDITOR_MARKUP = `
     <label style="display:flex;align-items:center;gap:7px;margin:0">Gain <input id="editorGain" type="range" min="-18" max="12" step="1" value="0" style="width:125px;margin:0"><span id="editorGainValue">0 dB</span></label>
     <button type="button" id="editorApplyGain" class="secondary" disabled>Apply gain</button>
   </div>
-  <div class="row space"><p id="editorStatus" class="muted" role="status">No audio loaded.</p><button id="editorExport" type="button" disabled>Export edited WAV</button></div>
+  <div class="row space"><p id="editorStatus" class="muted" role="status">No audio loaded.</p><button id="editorExport" type="button" disabled>Export 24-bit / 48 kHz PCM WAV</button></div>
 </section>`;
 export const EDITOR_SCRIPT = `
 (function(){
@@ -147,17 +147,39 @@ function apply(kind){
  }
  stop();snapshot();buffer=out;setEnabled();draw();status(kind==='gain'?'Applied '+gain+' dB gain':'Applied fade '+kind);
 }
-function wav(){
- const channels=buffer.numberOfChannels,frames=buffer.length,bytes=44+frames*channels*2;
- if(bytes>250*1024*1024)throw Error('Export exceeds the 250 MiB safety limit');
- const array=new ArrayBuffer(bytes),view=new DataView(array);
+async function render48kPcm() {
+ if(!buffer)throw Error('No audio loaded');
+ const channels=buffer.numberOfChannels;
+ if(channels<1||channels>2)throw Error('This export currently supports mono or stereo audio only');
+ const rate=48000;
+ if(buffer.sampleRate===rate)return buffer;
+ const length=Math.max(1,Math.round(buffer.duration*rate));
+ const offline=new OfflineAudioContext(channels,length,rate);
+ const source=offline.createBufferSource();
+ source.buffer=buffer;source.connect(offline.destination);source.start(0);
+ return await offline.startRendering();
+}
+function encodePcm24Wav(audio) {
+ const channels=audio.numberOfChannels,frames=audio.length,rate=audio.sampleRate;
+ if(rate!==48000)throw Error('Expected 48 kHz rendered audio');
+ const dataBytes=frames*channels*3;
+ if(dataBytes>250*1024*1024)throw Error('Export exceeds the 250 MiB safety limit');
+ const bytes=44+dataBytes,array=new ArrayBuffer(bytes),view=new DataView(array);
  const write=(offset,str)=>{for(let i=0;i<str.length;i++)view.setUint8(offset+i,str.charCodeAt(i));};
- write(0,'RIFF');view.setUint32(4,bytes-8,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);
- view.setUint16(22,channels,true);view.setUint32(24,buffer.sampleRate,true);view.setUint32(28,buffer.sampleRate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,bytes-44,true);
- const channelData=Array.from({length:channels},(_,c)=>buffer.getChannelData(c));let pos=44;
- for(let i=0;i<frames;i++)for(let c=0;c<channels;c++){const v=clamp(channelData[c][i],-1,1);view.setInt16(pos,v<0?v*32768:v*32767,true);pos+=2;}
+ write(0,'RIFF');view.setUint32(4,bytes-8,true);write(8,'WAVE');write(12,'fmt ');
+ view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);
+ view.setUint32(24,rate,true);view.setUint32(28,rate*channels*3,true);
+ view.setUint16(32,channels*3,true);view.setUint16(34,24,true);write(36,'data');view.setUint32(40,dataBytes,true);
+ const data=Array.from({length:channels},(_,c)=>audio.getChannelData(c));
+ let pos=44;
+ for(let i=0;i<frames;i++)for(let c=0;c<channels;c++){
+  const sample=data[c][i],v=clamp(Number.isFinite(sample)?sample:0,-1,1);
+  const n=Math.round(v<0?v*8388608:v*8388607);
+  view.setUint8(pos++,n&255);view.setUint8(pos++,(n>>8)&255);view.setUint8(pos++,(n>>16)&255);
+ }
  return new Blob([array],{type:'audio/wav'});
 }
+
 const wave=$('editorWave');
 const at=e=>{const box=wave.getBoundingClientRect();return clamp((e.clientX-box.left)/box.width,0,1)*(buffer?.duration||0);};
 wave.addEventListener('pointerdown',e=>{if(!buffer)return;dragging=true;wave.setPointerCapture(e.pointerId);selection=[at(e),at(e)];draw();});
@@ -171,7 +193,18 @@ $('editorFadeIn').onclick=()=>apply('in');$('editorFadeOut').onclick=()=>apply('
 $('editorSelectAll').onclick=()=>{if(buffer){selection=[0,buffer.duration];draw();}};
 $('editorUndo').onclick=()=>{if(!history.length)return;stop();buffer=history.pop();selection=null;setEnabled();draw();status('Undid last edit');};
 $('editorGain').oninput=()=>{$('editorGainValue').textContent=$('editorGain').value+' dB';};
-$('editorExport').onclick=()=>{if(!buffer)return;try{const blob=wav(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=fileName.replace(/\.[^.]+$/,'').replace(/[^a-z0-9 _.-]/gi,'_')+'-edited.wav';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);status('WAV export prepared. Original remains unchanged.');}catch(e){status(e.message);}};
+$('editorExport').onclick=async()=>{
+ if(!buffer)return;
+ const button=$('editorExport');button.disabled=true;status('Rendering 24-bit / 48 kHz PCM WAV…');
+ try{
+  const rendered=await render48kPcm(),blob=encodePcm24Wav(rendered);
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=fileName.replace(/\\.[^.]+$/,'').replace(/[^a-z0-9 _.-]/gi,'_')+'-24bit-48k-pcm.wav';
+  link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  status('Exported 24-bit / 48 kHz PCM WAV. Original preserved in Cloudflare.');
+ }catch(e){status('Export failed: '+e.message);}
+ finally{button.disabled=!buffer;}
+};
 window.addEventListener('willow-editor-import',e=>{if(e.detail?.blob)loadBlob(e.detail.blob,e.detail.name);});
 window.addEventListener('willow-editor-lock',()=>{stop();buffer=null;history=[];selection=null;fileName='edited-recording';$('editorPanel').hidden=true;setEnabled();draw();});
 window.addEventListener('pagehide',stop);
