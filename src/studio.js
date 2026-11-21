@@ -1,3 +1,4 @@
+import { EDITOR_MARKUP, EDITOR_SCRIPT } from './editor.js';
 export const STUDIO_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
@@ -13,13 +14,14 @@ button.secondary{background:#354354;color:#f3f4f7}button.warn{background:#7b3443
 label{display:block;font-size:.86rem;color:#c9d5e5}#message{min-height:24px;overflow-wrap:anywhere}.error{color:#ff9fae}.good{color:#94e4b6}
 audio{width:100%;margin-top:10px}#empty{color:#a9b6c8;padding:35px;text-align:center}
 @media(max-width:760px){main{grid-template-columns:1fr}.wrap{padding:14px}}
+ .editor-panel{margin-top:22px}.editor-toolbar{padding:12px 0;border-bottom:1px solid #394352}.wave-wrap{border:1px solid #496071;border-radius:8px;overflow:hidden;margin:15px 0;background:#0b121b}.wave-wrap canvas{width:100%;height:240px;touch-action:none;display:block}.editor-actions{padding:12px 0;gap:8px}.editor-panel h2{margin-bottom:3px}
 </style></head><body><div class="wrap">
 <header><div><h1>WILLOW TREE <span style="color:#f7c948">AUDIO STUDIO</span></h1><div class="muted">Private production library · first working build</div></div><button id="logout" class="secondary" hidden>Lock</button></header>
 <section class="panel" id="login" style="max-width:540px;margin:28px auto">
 <h2>Unlock your library</h2><p class="muted">Enter the administrator token generated during deployment. It is held only in this page's memory and cleared when you close or reload the page.</p>
 <label for="token">Administrator token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste token">
 <button id="unlock">Unlock library</button></section>
-<main id="app" hidden>
+${EDITOR_MARKUP}<main id="app" hidden>
 <section class="panel"><h2>Upload audio</h2><p class="muted">Originals are preserved in private R2 storage. Maximum 20 MiB per upload for this first build.</p>
 <label for="file">Recording</label><input id="file" type="file" accept=".mp3,.wav,.flac,.aif,.aiff,.m4a,.ogg">
 <label for="title">Title</label><input id="title" maxlength="200" placeholder="Recording title">
@@ -55,6 +57,11 @@ async function load(){
       const controls=document.createElement('div');controls.className='row';
       const action=(label,klass,fn)=>{const b=document.createElement('button');b.textContent=label;b.className=klass;b.onclick=fn;controls.append(b);};
       if(!isTrash){
+        action('Edit','secondary',async()=>{
+          try{message('Loading into editor…');const blob=await (await api('/assets/'+a.id+'/download')).blob();
+              window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+'.'+a.format}}));message('Loaded in editor');}
+          catch(e){message(e.message,true);}
+        });
         action('Preview','secondary',async()=>{
           try {
             if(previewURL)URL.revokeObjectURL(previewURL);
@@ -99,4 +106,4 @@ $('trash').onclick=()=>{isTrash=!isTrash;$('trash').textContent=isTrash?'View li
 let debounce; $('search').oninput=()=>{clearTimeout(debounce);debounce=setTimeout(load,250);};
 window.addEventListener('pagehide',()=>{token='';if(previewURL)URL.revokeObjectURL(previewURL);});
 })();
-</script></body></html>`;
+</script><script>${EDITOR_SCRIPT}</script></body></html>`;
