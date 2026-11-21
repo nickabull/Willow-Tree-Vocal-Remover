@@ -43,6 +43,11 @@ export async function handleProcessor(request,env){
  const parts=new URL(request.url).pathname.split('/').filter(Boolean);
  const method=request.method;
  if(parts.length===3&&parts[2]==='claim'&&method==='POST'){
+  // Surface permanently exhausted leases rather than leaving jobs stuck processing.
+  await env.DB.prepare(`UPDATE normalisation_jobs SET status='failed',leased_until=NULL,
+    last_error=COALESCE(last_error,'Processor lease expired after three attempts'),
+    updated_at=datetime('now')
+    WHERE status='processing' AND leased_until<datetime('now') AND attempts>=3`).run();
   const claimed=await env.DB.prepare(`UPDATE normalisation_jobs SET status='processing',
       attempts=attempts+1, leased_until=datetime('now','+10 minutes'),updated_at=datetime('now'),last_error=NULL
       WHERE id=(SELECT id FROM normalisation_jobs
