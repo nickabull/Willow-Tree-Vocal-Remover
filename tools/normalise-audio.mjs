@@ -45,18 +45,20 @@ function validateProbe(probe) {
  if(![1,2].includes(Number(audio.channels)))throw Error('Only mono/stereo supported in pilot');
  return {audio,duration_seconds:seconds};
 }
-async function wavHeader(filename) {
- const file=await open(filename,'r');
- try{
-  const header=Buffer.alloc(80);const {bytesRead}=await file.read(header,0,80,0);
-  if(bytesRead<44||header.toString('ascii',0,4)!=='RIFF'||header.toString('ascii',8,12)!=='WAVE')throw Error('Output is not RIFF/WAVE');
-  if(header.toString('ascii',12,16)!=='fmt ')throw Error('Unexpected WAV header (fmt chunk missing)');
-  const codec=header.readUInt16LE(20),channels=header.readUInt16LE(22),rate=header.readUInt32LE(24),bits=header.readUInt16LE(34);
-  // For some ffmpeg builds 24-bit PCM uses WAVE_FORMAT_EXTENSIBLE (0xfffe).
-  const formatOK=codec===1||(codec===65534 && header.readUInt16LE(44)===22);
-  if(!formatOK||![1,2].includes(channels)||rate!==48000||bits!==24)throw Error('Output is not 24-bit / 48 kHz signed PCM WAV');
-  return {codec_tag:codec,channels,sample_rate:rate,bits_per_sample:bits};
- }finally{await file.close();}
+async function verifyPcmOutput(filename, expectedChannels) {
+ // Use FFprobe rather than assuming a particular RIFF fmt chunk layout:
+ // 24-bit WAV can use either classic PCM or WAVE_FORMAT_EXTENSIBLE.
+ const probe=JSON.parse((await command('ffprobe',[
+   '-v','error','-select_streams','a:0','-show_entries',
+   'stream=codec_name,sample_rate,channels,bits_per_raw_sample',
+   '-of','json',filename
+ ],30000)).stdout);
+ const stream=probe.streams?.[0];
+ if(!stream||stream.codec_name!=='pcm_s24le'||Number(stream.sample_rate)!==48000||
+    Number(stream.channels)!==expectedChannels||Number(stream.bits_per_raw_sample)!==24) {
+   throw Error('Output validation failed: expected signed 24-bit / 48 kHz PCM WAV; found '+JSON.stringify(stream||null));
+ }
+ return {channels:Number(stream.channels),sample_rate:48000,bits_per_sample:24};
 }
 async function main(){
  const input=process.argv[2],directory=process.argv[3];
@@ -78,7 +80,7 @@ async function main(){
   await command('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-i',source,
     '-map','0:a:0','-vn','-sn','-dn','-ac',String(audio.channels),'-ar','48000',
     '-c:a','pcm_s24le','-f','wav','-y',tmp],MAX_PROCESS_SECONDS);
-  const fmt=await wavHeader(tmp);
+  const fmt=await verifyPcmOutput(tmp,Number(audio.channels));
   const outStat=await stat(tmp);
   const convertedHash=await sha256(tmp);
   const fs=await import('node:fs/promises');
