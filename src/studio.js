@@ -15,8 +15,8 @@ label{display:block;font-size:.86rem;color:#c9d5e5}#message{min-height:24px;over
 audio{width:100%;margin-top:10px}#empty{color:#a9b6c8;padding:35px;text-align:center}
 @media(max-width:760px){main{grid-template-columns:1fr}.wrap{padding:14px}}
  .editor-panel{margin-top:22px}.editor-toolbar{padding:12px 0;border-bottom:1px solid #394352}.wave-wrap{border:1px solid #496071;border-radius:8px;overflow:hidden;margin:15px 0;background:#0b121b}.wave-wrap canvas{width:100%;height:240px;touch-action:none;display:block}.editor-actions{padding:12px 0;gap:8px}.editor-panel h2{margin-bottom:3px}
-</style></head><body><div class="wrap">
-<header><div><h1>WILLOW TREE <span style="color:#f7c948">AUDIO STUDIO</span></h1><div class="muted">Private production library · first working build</div></div><button id="logout" class="secondary" hidden>Lock</button></header>
+.brand-head{display:flex;align-items:center;gap:16px}.willow-logo{height:76px;width:76px;object-fit:contain;background:#fff;border-radius:12px;padding:6px}.panel{backdrop-filter:blur(8px)}body{background:linear-gradient(rgba(10,13,20,.91),rgba(10,13,20,.96)),url('https://raw.githubusercontent.com/nickabull/Willow-Tree-Vocal-Remover/main/willow-dance-background.jpg') center/cover fixed #101722}button{background:#ed5a98;color:#fff}button.secondary{background:#354354;color:#f3f4f7}@media(max-width:700px){.willow-logo{width:54px;height:54px}.brand-head{align-items:flex-start}}\n</style></head><body><div class="wrap">
+<header><div class="brand-head"><img class="willow-logo" src="https://raw.githubusercontent.com/nickabull/Willow-Tree-Vocal-Remover/main/Willow%20Tree%20Black%20SQUARE%20no%20background.png" alt="Willow Tree original logo"><div><h1>WILLOW TREE <span style="color:#f15b9b">AUDIO STUDIO</span></h1><div class="muted">Private production library · dark editor preview</div></div></div><button id="logout" class="secondary" hidden>Lock</button></header>
 <section class="panel" id="login" style="max-width:540px;margin:28px auto">
 <h2>Unlock your library</h2><p class="muted">Enter the administrator token generated during deployment. It is held only in this page's memory and cleared when you close or reload the page.</p>
 <label for="token">Administrator token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste token">
@@ -91,7 +91,7 @@ $('unlock').onclick=async()=>{
   try{await api('/assets');$('login').hidden=true;$('app').hidden=false;$('logout').hidden=false;await load();}
   catch(e){token='';alert('Cannot unlock: '+e.message);}
 };
-$('logout').onclick=()=>{token='';if(previewURL)URL.revokeObjectURL(previewURL);$('items').replaceChildren();$('app').hidden=true;$('login').hidden=false;$('logout').hidden=true;};
+$('logout').onclick=()=>{window.dispatchEvent(new Event('willow-editor-lock'));token='';if(previewURL)URL.revokeObjectURL(previewURL);$('items').replaceChildren();$('app').hidden=true;$('login').hidden=false;$('logout').hidden=true;};
 $('upload').onclick=async()=>{
  const file=$('file').files[0];if(!file){message('Choose an audio file first',true);return;}
  if(file.size>20*1024*1024){message('The first version supports files up to 20 MiB',true);return;}
