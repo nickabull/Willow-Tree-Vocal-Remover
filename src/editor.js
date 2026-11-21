@@ -1,4 +1,4 @@
-export const EDITOR_MARKUP = \`
+export const EDITOR_MARKUP = `
 <section id="editorPanel" class="panel editor-panel" hidden>
   <div class="row space"><div><h2>AUDIO EDITOR <span style="color:#f15b9b">BETA</span></h2><p class="muted">Non-destructive browser editing · original file stays in the library</p></div><button type="button" class="secondary" id="closeEditor">Back to library</button></div>
   <div class="editor-toolbar row">
@@ -20,8 +20,8 @@ export const EDITOR_MARKUP = \`
     <button type="button" id="editorApplyGain" class="secondary" disabled>Apply gain</button>
   </div>
   <div class="row space"><p id="editorStatus" class="muted" role="status">No audio loaded.</p><button id="editorExport" type="button" disabled>Export edited WAV</button></div>
-</section>\`;
-export const EDITOR_SCRIPT = \`
+</section>`;
+export const EDITOR_SCRIPT = `
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
@@ -109,4 +109,4 @@ window.addEventListener('willow-editor-import',e=>{if(e.detail?.blob)loadBlob(e.
 window.addEventListener('pagehide',stop);
 draw();
 })();
-\`;
+`;
