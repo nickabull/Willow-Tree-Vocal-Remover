@@ -1,3 +1,4 @@
+import { STUDIO_HTML } from './studio.js';
 const MAX_BYTES = 20 * 1024 * 1024;
 const SUPPORTED = {
   mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac',
@@ -130,6 +131,15 @@ export default {
         return json({ status:'ok', service:'willowtree-audio-api', database:true, storage_binding:true,
           library_locked: !env.ADMIN_API_TOKEN });
       } catch { return json({ status:'error' }, 503); }
+    }
+    if (pathname === '/studio' && request.method === 'GET') {
+      return new Response(STUDIO_HTML, { headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; media-src blob:; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      } });
     }
     if (pathname.startsWith('/api/')) {
       try { return await handleApi(request, env); }
