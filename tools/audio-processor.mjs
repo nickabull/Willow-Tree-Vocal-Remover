@@ -28,10 +28,10 @@ async function api(route,opts={}){
  if(!response.ok)throw Error('Processor API '+response.status+': '+(await response.text()).slice(0,300));
  return response;
 }
-async function ffmpeg(input,output){
+async function ffmpeg(input,output,channels){
  return await new Promise((resolve,reject)=>{
   const args=['-nostdin','-hide_banner','-loglevel','error','-i',input,'-map','0:a:0',
-   '-vn','-sn','-dn','-ac','2','-ar','48000','-c:a','pcm_s24le','-f','wav','-y',output];
+   '-vn','-sn','-dn','-ac',String(channels),'-ar','48000','-c:a','pcm_s24le','-f','wav','-y',output];
   const child=spawn('ffmpeg',args,{stdio:['ignore','ignore','pipe'],shell:false});
   let error='',finished=false;
   const timeout=setTimeout(()=>child.kill('SIGKILL'),180000);
@@ -41,14 +41,23 @@ async function ffmpeg(input,output){
    if(code===0)resolve();else reject(Error('FFmpeg failed ('+code+'): '+error.slice(-600)))});
  });
 }
-async function probe(output){
+async function probe(output,expectedChannels){
  const {execFile}=await import('node:child_process');
  const {promisify}=await import('node:util');
  const {stdout}=await promisify(execFile)('ffprobe',['-v','error','-select_streams','a:0',
   '-show_entries','stream=codec_name,sample_rate,channels,bits_per_raw_sample','-of','json',output],
   {timeout:30000,maxBuffer:500000});
  const p=JSON.parse(stdout),s=p.streams?.[0];
- if(!s||s.codec_name!=='pcm_s24le'||+s.sample_rate!==48000||+s.channels!==2||+s.bits_per_raw_sample!==24)throw Error('Output did not verify as stereo PCM24/48k');
+ if(!s||s.codec_name!=='pcm_s24le'||+s.sample_rate!==48000||+s.channels!==expectedChannels||+s.bits_per_raw_sample!==24)throw Error('Output did not verify as stereo PCM24/48k');
+}
+async function originalChannels(input){
+ const {execFile}=await import('node:child_process');
+ const {promisify}=await import('node:util');
+ const {stdout}=await promisify(execFile)('ffprobe',['-v','error','-select_streams','a:0',
+  '-show_entries','stream=channels','-of','json',input],{timeout:30000,maxBuffer:500000});
+ const ch=Number(JSON.parse(stdout).streams?.[0]?.channels);
+ if(![1,2].includes(ch))throw Error('Only mono and stereo audio are supported by this pilot');
+ return ch;
 }
 async function processJob(job){
  const folder=await mkdtemp(path.join(tmpdir(),'willow-audio-'));
@@ -58,8 +67,9 @@ async function processJob(job){
   const blob=await res.arrayBuffer();
   if(blob.byteLength<32||blob.byteLength>20*1024*1024)throw Error('Source outside pilot limit');
   await writeFile(input,Buffer.from(blob),{mode:0o600});
-  await ffmpeg(input,output);
-  await probe(output);
+  const channels=await originalChannels(input);
+  await ffmpeg(input,output,channels);
+  await probe(output,channels);
   const bytes=await readFile(output);
   if(bytes.length>90*1024*1024)throw Error('PCM derivative exceeds Worker pilot limit (90 MiB)');
   const done=await api('jobs/'+job.id+'/complete',{
