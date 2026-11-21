@@ -46,3 +46,38 @@ Expected: `pcm_s24le`, `48000`, 1 or 2 channels, and 24 raw bits. Listen to the 
 
 ## Licensing
 FFmpeg licensing depends on how it is built and which external libraries are included. Check selected build/distribution terms before hosting commercial services.
+
+## Phase 2 code (committed, **not yet deployed**)
+
+The GitHub repository now contains an end-to-end **queue/processor/editor integration prototype**:
+
+- `migrations/0003_normalisation_jobs.sql`: statuses, attempts, lease, source-to-derived relationship and backfill for older active originals.
+- `src/index.js`: normalisation job created alongside every new original upload; an authenticated asset-status endpoint.
+- `src/processing.js`: separate token-protected processor endpoints; claim a job, fetch an original, submit validated mono/stereo 24-bit/48 kHz WAV derivative, record audit and attach the resulting asset.
+- `tools/audio-processor.mjs`: Node.js FFmpeg/FFprobe runner (polls queue, safely processes source in an isolated temporary directory, uploads working copy).
+- `src/studio.js`: queue status on uploads, no 'Edit' on undecoded original, edit the linked PCM copy when ready.
+
+**These files are only in GitHub.** No Cloudflare migration, new secret, or deployment has been run, and no dedicated conversion host/daemon is running. Merely publishing the Worker would leave jobs pending until a conversion runner is deployed. The project must not claim 'automatic conversion working' until an end-to-end hosted test has passed.
+
+### Safe deployment order
+
+1. Export/back up D1 and preserve R2. Review `0003` and apply it **once to the correct remote D1 database**, before deploying Worker code. `0002` is a separate, as-yet-unapplied audit migration; check migration history first.
+2. Generate a **different** high-entropy `PROCESSOR_API_TOKEN` Worker secret, distinct from `ADMIN_API_TOKEN`. Store it in a secure secret manager on the *trusted dedicated conversion host*, never in Git, browser JavaScript, or chat.
+3. Deploy Worker from the correctly configured, gitignored local Wrangler project settings. Confirm D1/R2 bindings; first test existing file downloads and trash/restore. Processor routes must not use the browser admin token.
+4. On a trusted, isolated Linux/Node+FFmpeg host with HTTPS access to the Worker, set `WILLOW_API_BASE_URL` (Worker origin) and `PROCESSOR_API_TOKEN` securely and run `node tools/audio-processor.mjs`; use `--once` for one poll then stop. Run under a service supervisor with logs. This **must not** run in a browser or depend on a user's Mac being awake for live production.
+5. Upload a small, **new** copy of Galaxy Ident via the ordinary web uploader. Verify queue → processor → derivative R2 object → D1 status complete → editor waveform/playback, including audit and trash semantics. Test browser refresh, long job, network drop, retries and corrupt input before user rollout.
+
+### Known pilot limitations / required work before production
+
+- Upload maximum is still **20 MiB** at the Worker API; derivative upload maximum **90 MiB** and buffering in Worker memory; large music shows may exceed that. Replace with presigned, multipart R2 transfer before broad use.
+- Supports WAV, MP3, FLAC, M4A, OGG, AIFF where FFmpeg can decode, but formats must be validated on actual samples. Currently forces **stereo output** even for mono input; decide whether to retain mono channels based on library standards.
+- Processing jobs use a 10-minute lease, three retries and a primitive claim endpoint; long-running/large-file work needs heartbeats, distributed concurrency testing and strict idempotent completion.
+- Current admin credential is a shared browser token, **not individual user identity**; work on verified per-user authentication, permissions and audit attribution.
+- Processor is a prototype, not a hardened container or cloud deployment. Secure execution isolation, malware scanning, precise resource limits, observability, secrets lifecycle and reconciliation are not done.
+- Source and derived assets are linked and conversion recorded; byte hashes in R2 metadata do not by themselves prove full production content integrity. Add manifest checks, independent media analysis, loudness/true-peak statistics and playout-cache verification.
+- Backfill excludes originals that already have active PCM derivatives; if an existing derived copy was not properly standardised, it requires a separate audit before reuse.
+- Testing performed so far: static JavaScript syntax checks, plus previous **local** Galaxy Ident 24-bit conversion on the user's Mac. The new Worker/processor integration has **not** been exercised against deployed D1/R2.
+
+### Operational rule
+
+Do not request repeated manual audio conversion from Willow Tree staff. If the queue is unavailable, show 'Awaiting conversion' and report processing failure clearly. An uploaded original is not automatically editable until it has a verified working copy.
