@@ -93,6 +93,23 @@ function decodePcmWav(bytes,audioContext) {
  }
  return out;
 }
+async function decodeMpegWavePayload(bytes, audioContext) {
+ const v=new DataView(bytes), label=(p,n)=>Array.from({length:n},(_,i)=>String.fromCharCode(v.getUint8(p+i))).join('');
+ if(bytes.byteLength<44||label(0,4)!=='RIFF'||label(8,4)!=='WAVE')throw Error('Invalid WAVE header');
+ let codec=null, payload=null, pos=12;
+ while(pos+8<=bytes.byteLength){
+  const id=label(pos,4), size=v.getUint32(pos+4,true),start=pos+8;
+  if(size>bytes.byteLength-start)throw Error('Truncated WAVE '+id+' chunk');
+  if(id==='fmt ' && size>=16)codec=v.getUint16(start,true);
+  if(id==='data' && !payload)payload=bytes.slice(start,start+size);
+  pos=start+size+(size&1);
+ }
+ if(codec!==80 && codec!==85)throw Error('Not an MPEG-encoded WAVE file');
+ if(!payload || payload.byteLength<32)throw Error('Missing MPEG audio frames');
+ status('MPEG audio detected inside WAV — trying native MPEG decoder…');
+ try {return await audioContext.decodeAudioData(payload.slice(0));}
+ catch {throw Error('This WAV contains MPEG-compressed audio (format '+codec+'). Your browser cannot decode the MPEG stream. Convert a COPY to 16-bit PCM WAV or MP3, then load that copy. The original is preserved in Cloudflare.');}
+}
 async function loadBlob(blob,name){
  stop();buffer=null;history=[];selection=null;setEnabled();draw();$('editorPanel').hidden=false;$('app').hidden=true;status('Decoding '+name+'…');try{
  const a=await ctxReady(false);const bytes=await blob.arrayBuffer();
@@ -100,7 +117,10 @@ async function loadBlob(blob,name){
  catch(nativeError){
   if(bytes.byteLength>=12&&new TextDecoder('ascii').decode(bytes.slice(0,4))==='RIFF'){
    status('Using compatible WAV decoder…');
-   decoded=decodePcmWav(bytes,a);
+   try{decoded=decodePcmWav(bytes,a);}catch(wavError){
+    if(/Unsupported WAV encoding: format (80|85),/.test(wavError.message))decoded=await decodeMpegWavePayload(bytes,a);
+    else throw wavError;
+   }
   }else{throw Error('This file is not recognised as browser-decodable audio. Try the original Download button to inspect it.');}
  }
  if(!decoded?.length)throw Error('Empty recording');
