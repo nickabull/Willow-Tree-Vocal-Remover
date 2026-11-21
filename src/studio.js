@@ -5,7 +5,7 @@ export const STUDIO_HTML = `<!doctype html>
 <title>Willow Tree Audio Studio</title>
 <style>
 :root{font-family:system-ui,-apple-system,sans-serif;color:#f3f4f7;background:#101722}
-*{box-sizing:border-box}body{margin:0}.wrap{max-width:1100px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #394352;padding-bottom:18px}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0}.wrap{max-width:1100px;margin:auto;padding:24px}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #394352;padding-bottom:18px}
 h1{margin:0;font-size:1.7rem}h2{font-size:1.2rem}.muted{color:#a9b6c8}main{display:grid;grid-template-columns:340px 1fr;gap:20px;margin-top:22px}.panel{background:#1b2635;border:1px solid #394352;border-radius:12px;padding:20px}
 input,button{font:inherit}input{width:100%;padding:11px;border-radius:7px;border:1px solid #546177;background:#111b29;color:white;margin:8px 0 14px}button{background:#f7c948;color:#17202e;border:0;border-radius:7px;padding:10px 13px;font-weight:650;cursor:pointer}
 button.secondary{background:#354354;color:#f3f4f7}button.warn{background:#7b3443;color:white}button:disabled{opacity:.5;cursor:not-allowed}
@@ -59,7 +59,7 @@ async function load(){
       if(!isTrash){
         action('Edit','secondary',async()=>{
           try{message('Loading into editor…');const blob=await (await api('/assets/'+a.id+'/download')).blob();
-              window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+'.'+a.format}}));message('Loaded in editor');}
+              window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+'.'+a.format}}));message('Opening editor…');}
           catch(e){message(e.message,true);}
         });
         action('Preview','secondary',async()=>{
