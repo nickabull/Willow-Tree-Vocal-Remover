@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Willow Tree Cloudflare worker
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.d1-list.json
+wrangler.jsonc
+.DS_Store
