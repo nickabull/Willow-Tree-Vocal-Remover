@@ -227,3 +227,7 @@ node_modules/
 .d1-list.json
 wrangler.jsonc
 .DS_Store
+
+# Local audio ingest tests (never commit recordings)
+audio-pilot-output/
+*.partial-*
