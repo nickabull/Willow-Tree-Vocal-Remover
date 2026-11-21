@@ -52,9 +52,57 @@ function stop(){if(currentSource){try{currentSource.stop();}catch{}currentSource
 async function play(){if(!buffer)return;stop();const a=await ctxReady(true),source=a.createBufferSource();source.buffer=buffer;source.connect(a.destination);let from=selection?selection[0]:0;let duration=selection?selection[1]-selection[0]:buffer.duration;if(duration<=0)return;
  playOffset=from;startedAt=a.currentTime-from;currentSource=source;source.onended=()=>{if(currentSource===source){currentSource=null;playOffset=0;if(playTimer)clearInterval(playTimer);playTimer=null;draw();}};
  source.start(0,from,duration);playTimer=setInterval(draw,60);status('Playing selection or track');}
+function decodePcmWav(bytes,audioContext) {
+ const view=new DataView(bytes);
+ const label=(at,n)=>Array.from({length:n},(_,i)=>String.fromCharCode(view.getUint8(at+i))).join('');
+ if(bytes.byteLength<44 || label(0,4)!=='RIFF' || label(8,4)!=='WAVE')throw Error('Not a standard RIFF/WAVE recording');
+ let fmt=null,data=null,pos=12;
+ while(pos+8<=bytes.byteLength){
+  const id=label(pos,4), size=view.getUint32(pos+4,true),start=pos+8;
+  if(start+size>bytes.byteLength)throw Error('Truncated WAV chunk '+id);
+  if(id==='fmt '){
+   if(size<16)throw Error('Invalid WAV format header');
+   let code=view.getUint16(start,true);
+   const channels=view.getUint16(start+2,true),rate=view.getUint32(start+4,true),bits=view.getUint16(start+14,true),align=view.getUint16(start+12,true);
+   if(code===65534 && size>=40)code=view.getUint16(start+24,true); // WAVE_FORMAT_EXTENSIBLE subtype
+   fmt={code,channels,rate,bits,align};
+  }
+  if(id==='data' && !data)data={start,size};
+  pos=start+size+(size%2);
+ }
+ if(!fmt||!data)throw Error('Missing WAV format or data chunk');
+ const {code,channels,rate,bits,align}=fmt;
+ if(![1,3].includes(code)||![8,16,24,32].includes(bits)||channels<1||channels>8||rate<8000||rate>192000)throw Error('Unsupported WAV encoding: format '+code+', '+bits+'-bit, '+channels+' channels');
+ if(code===3 && bits!==32)throw Error('Only 32-bit floating-point WAV is supported');
+ if(align!==channels*(bits/8))throw Error('Unexpected WAV frame alignment');
+ const frames=Math.floor(data.size/align);
+ if(frames<1||frames>rate*3600)throw Error('WAV duration out of supported range');
+ const out=audioContext.createBuffer(channels,frames,rate);
+ for(let c=0;c<channels;c++){
+  const dest=out.getChannelData(c);
+  for(let i=0;i<frames;i++){
+   const p=data.start+i*align+c*(bits/8);
+   let v;
+   if(code===3)v=view.getFloat32(p,true);
+   else if(bits===8)v=(view.getUint8(p)-128)/128;
+   else if(bits===16)v=view.getInt16(p,true)/32768;
+   else if(bits===24){let n=view.getUint8(p)|(view.getUint8(p+1)<<8)|(view.getUint8(p+2)<<16);if(n&0x800000)n|=0xff000000;v=n/8388608;}
+   else v=view.getInt32(p,true)/2147483648;
+   dest[i]=Number.isFinite(v)?Math.max(-1,Math.min(1,v)):0;
+  }
+ }
+ return out;
+}
 async function loadBlob(blob,name){
- stop();$('editorPanel').hidden=false;$('app').hidden=true;status('Decoding '+name+'…');try{
- const a=await ctxReady(false);const bytes=await blob.arrayBuffer();const decoded=await a.decodeAudioData(bytes.slice(0));
+ stop();buffer=null;history=[];selection=null;setEnabled();draw();$('editorPanel').hidden=false;$('app').hidden=true;status('Decoding '+name+'…');try{
+ const a=await ctxReady(false);const bytes=await blob.arrayBuffer();
+ let decoded;try{decoded=await a.decodeAudioData(bytes.slice(0));}
+ catch(nativeError){
+  if(bytes.byteLength>=12&&new TextDecoder('ascii').decode(bytes.slice(0,4))==='RIFF'){
+   status('Using compatible WAV decoder…');
+   decoded=decodePcmWav(bytes,a);
+  }else{throw Error('This file is not recognised as browser-decodable audio. Try the original Download button to inspect it.');}
+ }
  if(!decoded?.length)throw Error('Empty recording');
  buffer=decoded;fileName=name||'audio';history=[];selection=null;$('editorFilename').textContent=fileName+' · '+decoded.numberOfChannels+' channel(s) · '+decoded.sampleRate+' Hz';setEnabled();draw();status('Ready — drag across the waveform to select audio');
  }catch(e){status('Cannot decode this recording: '+e.message);console.error('Willow Tree audio decode failed',e);}
