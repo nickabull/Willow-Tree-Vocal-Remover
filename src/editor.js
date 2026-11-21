@@ -106,6 +106,7 @@ $('editorUndo').onclick=()=>{if(!history.length)return;stop();buffer=history.pop
 $('editorGain').oninput=()=>{$('editorGainValue').textContent=$('editorGain').value+' dB';};
 $('editorExport').onclick=()=>{if(!buffer)return;try{const blob=wav(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=fileName.replace(/\.[^.]+$/,'').replace(/[^a-z0-9 _.-]/gi,'_')+'-edited.wav';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);status('WAV export prepared. Original remains unchanged.');}catch(e){status(e.message);}};
 window.addEventListener('willow-editor-import',e=>{if(e.detail?.blob)loadBlob(e.detail.blob,e.detail.name);});
+window.addEventListener('willow-editor-lock',()=>{stop();buffer=null;history=[];selection=null;fileName='edited-recording';$('editorPanel').hidden=true;setEnabled();draw();});
 window.addEventListener('pagehide',stop);
 draw();
 })();
