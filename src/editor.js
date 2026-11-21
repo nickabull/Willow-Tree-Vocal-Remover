@@ -47,18 +47,17 @@ function draw(){
  $('editorClock').textContent=fmt(t)+' / '+fmt(buffer.duration);
  $('editorRange').textContent=selection?'Selection: '+fmt(selection[0])+' – '+fmt(selection[1]):'Selection: none';
 }
-async function ctxReady(){if(!context)context=new (window.AudioContext||window.webkitAudioContext)();if(context.state==='suspended')await context.resume();return context;}
+async function ctxReady(resume=false){if(!context)context=new (window.AudioContext||window.webkitAudioContext)();if(resume&&context.state==='suspended')await context.resume();return context;}
 function stop(){if(currentSource){try{currentSource.stop();}catch{}currentSource.disconnect();currentSource=null;}if(playTimer){clearInterval(playTimer);playTimer=null;}playOffset=0;draw();}
-async function play(){if(!buffer)return;stop();const a=await ctxReady(),source=a.createBufferSource();source.buffer=buffer;source.connect(a.destination);let from=selection?selection[0]:0;let duration=selection?selection[1]-selection[0]:buffer.duration;if(duration<=0)return;
+async function play(){if(!buffer)return;stop();const a=await ctxReady(true),source=a.createBufferSource();source.buffer=buffer;source.connect(a.destination);let from=selection?selection[0]:0;let duration=selection?selection[1]-selection[0]:buffer.duration;if(duration<=0)return;
  playOffset=from;startedAt=a.currentTime-from;currentSource=source;source.onended=()=>{if(currentSource===source){currentSource=null;playOffset=0;if(playTimer)clearInterval(playTimer);playTimer=null;draw();}};
  source.start(0,from,duration);playTimer=setInterval(draw,60);status('Playing selection or track');}
 async function loadBlob(blob,name){
- stop();status('Decoding '+name+'…');try{
- const a=await ctxReady();const bytes=await blob.arrayBuffer();const decoded=await a.decodeAudioData(bytes.slice(0));
+ stop();$('editorPanel').hidden=false;$('app').hidden=true;status('Decoding '+name+'…');try{
+ const a=await ctxReady(false);const bytes=await blob.arrayBuffer();const decoded=await a.decodeAudioData(bytes.slice(0));
  if(!decoded?.length)throw Error('Empty recording');
  buffer=decoded;fileName=name||'audio';history=[];selection=null;$('editorFilename').textContent=fileName+' · '+decoded.numberOfChannels+' channel(s) · '+decoded.sampleRate+' Hz';setEnabled();draw();status('Ready — drag across the waveform to select audio');
- $('editorPanel').hidden=false;$('app').hidden=true;
- }catch(e){status('Cannot decode this recording: '+e.message);}
+ }catch(e){status('Cannot decode this recording: '+e.message);console.error('Willow Tree audio decode failed',e);}
 }
 function selectionSamples(){if(!buffer||!selection)return null;const a=clamp(Math.floor(selection[0]*buffer.sampleRate),0,buffer.length),b=clamp(Math.ceil(selection[1]*buffer.sampleRate),0,buffer.length);return b>a?[a,b]:null;}
 function snapshot(){if(!buffer)return;history.push(buffer);if(history.length>10)history.shift();}
