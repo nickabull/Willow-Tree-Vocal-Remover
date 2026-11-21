@@ -22,20 +22,20 @@ audio{width:100%;margin-top:10px}#empty{color:#a9b6c8;padding:35px;text-align:ce
 <label for="token">Administrator token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste token">
 <button id="unlock">Unlock library</button></section>
 ${EDITOR_MARKUP}<main id="app" hidden>
-<section class="panel"><h2>Upload audio</h2><p class="muted">Originals are preserved in private R2 storage. Maximum 20 MiB per upload for this first build.</p>
+<section class="panel"><h2>Upload audio</h2><p class="muted">Originals are preserved in private R2 storage. The studio prepares a 24-bit / 48 kHz PCM working copy automatically when the processor is online. Pilot limit: 20 MiB original upload.</p>
 <label for="file">Recording</label><input id="file" type="file" accept=".mp3,.wav,.flac,.aif,.aiff,.m4a,.ogg">
 <label for="title">Title</label><input id="title" maxlength="200" placeholder="Recording title">
 <label for="artist">Artist / presenter</label><input id="artist" maxlength="200" placeholder="Optional">
-<button id="upload">Upload original</button>
+<button id="upload">Upload audio</button>
 <hr style="border:0;border-top:1px solid #394352;margin:23px 0">
-<strong>Coming next</strong><p class="muted">Waveform editor, multitrack sessions, and AI vocal / instrumental separation.</p></section>
+<strong>Production library</strong><p class="muted">Your original remains untouched; the editor uses its linked PCM working copy. A queue status is shown until conversion finishes.</p></section>
 <section class="panel"><div class="row space"><h2>Audio library</h2><div class="row"><button id="trash" class="secondary">View trash</button><button id="refresh" class="secondary">Refresh</button></div></div>
 <label for="search">Search titles and artists</label><input id="search" placeholder="Search recordings">
 <div id="message" role="status" aria-live="polite"></div><div id="items"></div><div id="empty" hidden>No recordings found.</div>
 </section></main></div>
 <script>
 (()=>{'use strict';
-let token='',isTrash=false,previewURL=null;
+let token='',isTrash=false,previewURL=null,refreshTimer=null;
 const $=id=>document.getElementById(id);
 const message=(text,bad=false)=>{$('message').textContent=text;$('message').className=bad?'error':'good';};
 async function api(path,options={}) {
@@ -49,19 +49,44 @@ async function load(){
   try{
     const data=await (await api('/assets?'+query)).json();
     const items=$('items');items.replaceChildren();
-    $('empty').hidden=data.assets.length>0;
-    for(const a of data.assets){
+    const visible=data.assets.filter(a=>isTrash||a.category!=='pcm_working_copy');
+    $('empty').hidden=visible.length>0;
+    let waiting=false;
+    for(const a of visible){
       const card=document.createElement('div');card.className='entry';
       const title=document.createElement('strong');title.textContent=a.title;
       const details=document.createElement('small');details.textContent=[a.artist,a.format,(a.bytes/1048576).toFixed(2)+' MiB',a.created_at].filter(Boolean).join(' · ');
       const controls=document.createElement('div');controls.className='row';
       const action=(label,klass,fn)=>{const b=document.createElement('button');b.textContent=label;b.className=klass;b.onclick=fn;controls.append(b);};
       if(!isTrash){
-        action('Edit','secondary',async()=>{
-          try{message('Loading into editor…');const blob=await (await api('/assets/'+a.id+'/download')).blob();
-              window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+'.'+a.format}}));message('Opening editor…');}
-          catch(e){message(e.message,true);}
-        });
+        if(a.category==='original'){
+          const edit=document.createElement('button');edit.className='secondary';edit.disabled=true;
+          edit.textContent='Checking audio…';controls.append(edit);
+          try{
+            const process=await (await api('/assets/'+a.id+'/processing')).json();
+            if(process.status==='complete'&&process.derived_asset_id){
+              edit.disabled=false;edit.textContent='Edit PCM copy';
+              edit.onclick=async()=>{
+                try{message('Loading verified PCM working copy…');
+                  const blob=await (await api('/assets/'+process.derived_asset_id+'/download')).blob();
+                  window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+' (PCM).wav'}}));
+                  message('Opening PCM working copy…');
+                }catch(e){message(e.message,true);}
+              };
+            } else if(process.status==='failed'){
+              edit.textContent='Conversion failed';details.textContent+=' · Conversion needs attention';
+            } else {
+              edit.textContent=process.status==='processing'?'Converting audio…':'Awaiting conversion';
+              waiting=true;
+            }
+          }catch(e){edit.textContent='Conversion status unavailable';}
+        } else {
+          action('Edit','secondary',async()=>{
+            try{const blob=await (await api('/assets/'+a.id+'/download')).blob();
+              window.dispatchEvent(new CustomEvent('willow-editor-import',{detail:{blob,name:a.title+'.'+a.format}}));
+            }catch(e){message(e.message,true);}
+          });
+        }
         action('Preview','secondary',async()=>{
           try {
             if(previewURL)URL.revokeObjectURL(previewURL);
@@ -83,6 +108,8 @@ async function load(){
       }
       card.append(title,details,controls);items.append(card);
     }
+    if(refreshTimer)clearTimeout(refreshTimer);
+    if(waiting)refreshTimer=setTimeout(()=>{if(token&&!isTrash&&!window.document.getElementById('app').hidden)load();},10000);
   }catch(e){message(e.message,true);}
 }
 $('unlock').onclick=async()=>{
@@ -91,19 +118,19 @@ $('unlock').onclick=async()=>{
   try{await api('/assets');$('login').hidden=true;$('app').hidden=false;$('logout').hidden=false;await load();}
   catch(e){token='';alert('Cannot unlock: '+e.message);}
 };
-$('logout').onclick=()=>{window.dispatchEvent(new Event('willow-editor-lock'));token='';if(previewURL)URL.revokeObjectURL(previewURL);$('items').replaceChildren();$('app').hidden=true;$('login').hidden=false;$('logout').hidden=true;};
+$('logout').onclick=()=>{window.dispatchEvent(new Event('willow-editor-lock'));if(refreshTimer)clearTimeout(refreshTimer);token='';if(previewURL)URL.revokeObjectURL(previewURL);$('items').replaceChildren();$('app').hidden=true;$('login').hidden=false;$('logout').hidden=true;};
 $('upload').onclick=async()=>{
  const file=$('file').files[0];if(!file){message('Choose an audio file first',true);return;}
  if(file.size>20*1024*1024){message('The first version supports files up to 20 MiB',true);return;}
  const title=$('title').value.trim()||file.name;
  const headers={'Content-Type':file.type||'application/octet-stream','X-File-Name':file.name,'X-Audio-Title':title,'X-Audio-Artist':$('artist').value.trim()};
  $('upload').disabled=true;message('Uploading…');
- try{await api('/assets',{method:'POST',headers,body:file});$('file').value='';$('title').value='';$('artist').value='';message('Recording uploaded');await load();}
+ try{await api('/assets',{method:'POST',headers,body:file});$('file').value='';$('title').value='';$('artist').value='';message('Original safely uploaded — preparing PCM working copy');await load();}
  catch(e){message(e.message,true);}finally{$('upload').disabled=false;}
 };
 $('refresh').onclick=load;
 $('trash').onclick=()=>{isTrash=!isTrash;$('trash').textContent=isTrash?'View library':'View trash';load();};
 let debounce; $('search').oninput=()=>{clearTimeout(debounce);debounce=setTimeout(load,250);};
-window.addEventListener('pagehide',()=>{token='';if(previewURL)URL.revokeObjectURL(previewURL);});
+window.addEventListener('pagehide',()=>{token='';if(refreshTimer)clearTimeout(refreshTimer);if(previewURL)URL.revokeObjectURL(previewURL);});
 })();
 </script><script>${EDITOR_SCRIPT}</script></body></html>`;
