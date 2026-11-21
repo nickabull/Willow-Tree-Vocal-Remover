@@ -138,7 +138,7 @@ export default {
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
-        'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; media-src blob:; img-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; media-src blob:; img-src 'self' blob: https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
       } });
     }
     if (pathname.startsWith('/api/')) {
