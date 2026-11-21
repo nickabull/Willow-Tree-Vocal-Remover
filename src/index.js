@@ -1,4 +1,5 @@
 import { STUDIO_HTML } from './studio.js';
+import { handleProcessor } from './processing.js';
 const MAX_BYTES = 20 * 1024 * 1024;
 const SUPPORTED = {
   mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac',
@@ -67,14 +68,31 @@ async function handleApi(request, env) {
     const objectKey = 'originals/' + id + '.' + ext;
     await env.AUDIO.put(objectKey, body, { httpMetadata: { contentType: SUPPORTED[ext] }, customMetadata: { originalName: name } });
     try {
-      await env.DB.prepare('INSERT INTO audio_assets (id,title,artist,category,object_key,format,bytes) VALUES (?,?,?,?,?,?,?)')
-        .bind(id, title, artist || null, 'original', objectKey, ext, body.byteLength).run();
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO audio_assets (id,title,artist,category,object_key,format,bytes) VALUES (?,?,?,?,?,?,?)')
+          .bind(id, title, artist || null, 'original', objectKey, ext, body.byteLength),
+        env.DB.prepare('INSERT INTO normalisation_jobs (id,original_asset_id,status) VALUES (?,?,?)')
+          .bind(crypto.randomUUID(), id, 'pending')
+      ]);
       await audit(env.DB, 'upload', id, { filename: name, bytes: body.byteLength });
     } catch (error) {
       await env.AUDIO.delete(objectKey);
       throw error;
     }
     return json({ id, title, artist, bytes: body.byteLength, format: ext }, 201);
+  }
+
+  // The library never asks users to prepare their audio manually.
+  // Its original and PCM working-copy are linked by the queue.
+  if (parts.length === 4 && parts[1] === 'assets' && isId(parts[2]) &&
+      parts[3] === 'processing' && method === 'GET') {
+    const original=await env.DB.prepare('SELECT id FROM audio_assets WHERE id=? AND deleted_at IS NULL AND category=?')
+       .bind(parts[2],'original').first();
+    if(!original)return fail(404,'Original not found');
+    const job=await env.DB.prepare('SELECT status,attempts,last_error,derived_asset_id,updated_at FROM normalisation_jobs WHERE original_asset_id=?')
+       .bind(original.id).first();
+    if(!job)return json({status:'not_queued',derived_asset_id:null});
+    return json({status:job.status,attempts:job.attempts,error:job.status==='failed'?job.last_error:null,derived_asset_id:job.derived_asset_id});
   }
 
   if (parts.length === 3 && parts[1] === 'assets' && isId(parts[2])) {
@@ -140,6 +158,10 @@ export default {
         'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; media-src blob:; img-src 'self' blob: https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
       } });
+    }
+    if (pathname.startsWith('/api/processing/')) {
+      try { return await handleProcessor(request,env); }
+      catch(error){console.error('Audio processor failure',error);return fail(500,'Processor error');}
     }
     if (pathname.startsWith('/api/')) {
       try { return await handleApi(request, env); }
